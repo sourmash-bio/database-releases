@@ -1,0 +1,28 @@
+configfile: "config.yml"
+
+NAME = config['name']
+KSIZES = config['ksizes']
+TAXONOMY_FILE = config['taxonomy']
+SCALED = config['scaled']
+IDENTIFIERS = config['identifiers']
+IDENTIFIER_COL = config['identifier_col']
+IDENTIFIER_TYPE = config['identifier_type']
+
+rule check:
+    input:
+        expand("check.{NAME}.k{k}.zip", NAME=NAME, k=KSIZES)
+
+rule wc_check:
+    input:
+        db = "{filename}.zip",
+        identifiers = IDENTIFIERS,
+    output:
+        touch("check.{filename}.zip")
+    params:
+        colname = IDENTIFIER_COL,
+        coltype = IDENTIFIER_TYPE,
+    shell: """
+        sourmash sig check --fail-if-missing \
+           --picklist {input.identifiers}:{params.colname}:{params.coltype} \
+           {input.db}
+    """

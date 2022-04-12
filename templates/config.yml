@@ -1,0 +1,14 @@
+name: podar-ref
+taxonomy: podar-ref/podar-lineage.csv
+ksizes:
+- 21
+- 31
+- 51
+scaled: 1000
+
+# picklist name
+identifiers: podar-ref/podar-ref.ident.csv
+# picklist column name
+identifier_col: ident
+# picklist column type: ident, identprefix, or something else.
+identifier_type: identprefix
