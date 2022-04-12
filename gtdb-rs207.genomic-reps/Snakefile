@@ -31,6 +31,9 @@ rule check:
         expand("check/{NAME}.k{ksize}.sbt.zip", NAME=NAME, ksize=KSIZES),
         expand("check/{NAME}.k{ksize}.lca.json.gz", NAME=NAME, ksize=KSIZES),
 
+rule check_source:
+    input:
+        expand("check/{NAME}.k{ksize}.zip", NAME=NAME, ksize=KSIZES),
 
 rule wc_build_sbt:
     message: "Build SBT {wildcards.filename}.sbt.zip."
