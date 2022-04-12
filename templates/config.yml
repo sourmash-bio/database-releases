@@ -5,6 +5,7 @@ ksizes:
 - 31
 - 51
 scaled: 1000
+lca_json_scaled: 10000
 
 # picklist name
 identifiers: podar-ref/podar-ref.ident.csv
@@ -12,3 +13,8 @@ identifiers: podar-ref/podar-ref.ident.csv
 identifier_col: ident
 # picklist column type: ident, identprefix, or something else.
 identifier_type: identprefix
+
+# taxonomy column start for 'phylum'
+tax_column: 3
+# keep version identifiers?
+tax_keep_version: False
