@@ -1,0 +1,20 @@
+name: gtdb-rs207.genomic
+taxonomy: gtdb-rs207.taxonomy.with-strain.csv
+ksizes:
+- 21
+- 31
+- 51
+scaled: 1000
+lca_json_scaled: 10000
+
+# picklist name
+identifiers: gtdb-rs207.taxonomy.with-strain.csv
+# picklist column name
+identifier_col: ident
+# picklist column type: ident, identprefix, or something else.
+identifier_type: ident
+
+# taxonomy column start for 'phylum'
+tax_column: 2
+# keep version identifiers?
+tax_keep_version: True

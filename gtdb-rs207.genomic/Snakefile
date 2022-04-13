@@ -1,0 +1,84 @@
+configfile: "config.yml"
+
+NAME = config['name']
+KSIZES = config['ksizes']
+SCALED = config['scaled']
+LCA_JSON_SCALED = config['lca_json_scaled']
+
+# identifier info
+IDENTIFIERS = config['identifiers']
+IDENTIFIER_COL = config['identifier_col']
+IDENTIFIER_TYPE = config['identifier_type']
+
+# taxonomy info
+TAXONOMY_FILE = config['taxonomy']
+TAXONOMY_COLNUM = int(config['tax_column'])
+TAXONOMY_KEEP_VERSION = bool(config['tax_keep_version'])
+
+wildcard_constraints:
+    ksize = "\d+",
+    name = "[^/]+",
+    filename = "[^/]+"
+
+rule build:
+    input:
+        expand("{NAME}.k{ksize}.sbt.zip", NAME=NAME, ksize=KSIZES),
+        expand("{NAME}.k{ksize}.lca.json.gz", NAME=NAME, ksize=KSIZES),
+
+rule check:
+    input:
+        expand("check/{NAME}.k{ksize}.zip", NAME=NAME, ksize=KSIZES),
+        expand("check/{NAME}.k{ksize}.sbt.zip", NAME=NAME, ksize=KSIZES),
+        expand("check/{NAME}.k{ksize}.lca.json.gz", NAME=NAME, ksize=KSIZES),
+
+rule check_source:
+    input:
+        expand("check/{NAME}.k{ksize}.zip", NAME=NAME, ksize=KSIZES),
+
+rule wc_build_sbt:
+    message: "Build SBT {wildcards.filename}.sbt.zip."
+    input:
+        db = "{filename}.zip",
+        check = "check/{filename}.zip"
+    output:
+        sbt = "{filename}.sbt.zip",
+    params:
+        scaled = SCALED,
+    shell: """
+        sourmash index {output.sbt} {input.db} --scaled={params.scaled}
+    """
+
+rule wc_build_lca:
+    message: "Build LCA {wildcards.name}.k.{wildcards.ksize}.lca.json.gz."
+    input:
+        db = "{name}.k{ksize}.zip",
+        tax = TAXONOMY_FILE,
+        check = "check/{name}.k{ksize}.zip",
+    output:
+        lca_db = "{name}.k{ksize}.lca.json.gz",
+    params:
+        colnum = TAXONOMY_COLNUM,
+        keep_ident_version = "--keep-identifier-v" if TAXONOMY_KEEP_VERSION else "",
+        scaled = LCA_JSON_SCALED,
+    shell: """
+        sourmash lca index {input.tax} {output.lca_db} {input.db} \
+           -C {params.colnum} {params.keep_ident_version} \
+           --fail-on-missing-taxonomy --split-identifiers --require-taxonomy \
+           --scaled={params.scaled} --ksize {wildcards.ksize}
+    """
+
+rule wc_check:
+    message: "Check {wildcards.filename}.zip against all identifiers"
+    input:
+        db = "{filename}",
+        identifiers = IDENTIFIERS,
+    output:
+        touch("check/{filename}")
+    params:
+        colname = IDENTIFIER_COL,
+        coltype = IDENTIFIER_TYPE,
+    shell: """
+        sourmash sig check --fail-if-missing --no-require \
+           --picklist {input.identifiers}:{params.colname}:{params.coltype} \
+           {input.db}
+    """
