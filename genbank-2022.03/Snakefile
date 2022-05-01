@@ -1,0 +1,74 @@
+DOMAINS=['archaea',
+         'fungi',
+         'protozoa',
+         'bacteria',
+         'viral']
+
+TAG='latest'
+DATABASES = ['../entire.mar29.csv']
+KSIZES=[21,31,51]
+
+rule all:
+    input:
+        expand("{D}.missing.csv", D=DOMAINS),
+        expand("{D}.manifest.csv", D=DOMAINS),
+
+rule build:
+    input:
+        expand("genbank-latest-{D}-k{k}.zip", D=DOMAINS, k=KSIZES)
+
+rule check:
+    input:
+        expand("genbank-latest-{D}-k{k}.zip.check", D=DOMAINS, k=KSIZES)
+
+rule download_assembly_summary:
+    output:
+        '{D}.assembly_summary.txt'
+    shell: """
+        curl -L https://ftp.ncbi.nlm.nih.gov/genomes/genbank/{wildcards.D}/assembly_summary.txt > {output}
+    """
+
+rule make_idents:
+    input:
+        '{D}.assembly_summary.txt'
+    output:
+        "{D}.idents.csv"
+    shell: """
+        echo ident > {output}
+        cut -f1 {input} | grep -v ^# >> {output}
+    """
+
+rule picklist_check:
+    input:
+        databases = DATABASES,
+        picklist = "{D}.idents.csv",
+    output:
+        missing = "{D}.missing.csv",
+        manifest = "{D}.manifest.csv",
+    shell: """
+        sourmash sig check --picklist {input.picklist}:ident:ident \
+            {input.databases} --output-missing {output.missing} \
+            --save-manifest {output.manifest}
+        touch {output.missing}
+    """
+
+rule picklist_confirm:
+    input:
+        picklist = "{D}.idents.csv",
+        zip = "genbank-latest-{D}-k{k}.zip",
+    output:
+        confirm = touch("genbank-latest-{D}-k{k}.zip.check")
+    shell: """
+        sourmash sig check --picklist {input.picklist}:ident:ident \
+            {input.zip} --fail
+    """
+
+rule build_zip:
+    input:
+        databases = DATABASES,
+        manifest = "{D}.manifest.csv",
+    output:
+        "genbank-latest-{D}-k{k}.zip"
+    shell: """
+        sourmash sig cat {input.manifest} -k {wildcards.k} -o {output}
+    """
