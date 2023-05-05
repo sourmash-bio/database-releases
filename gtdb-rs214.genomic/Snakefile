@@ -1,6 +1,5 @@
-# update the wort manifest to reflect all available signatures; use updated version here
-#DATABASES = ['/group/ctbrowngrp/sourmash-db/wort-manifests/2023-05-05.wort.sqlmf'] # wort manifest
-DATABASES = ['/group/ctbrowngrp/sourmash-db/wort-manifests/entire.2022-04-26.sqlmf'] # wort manifest
+### update the wort manifest to reflect all available signatures; use updated version here
+DATABASES = ['/group/ctbrowngrp/sourmash-db/wort-manifests/2023-05-04.wort.sqlmf'] # wort manifest
 
 ### update with metadata for new GTDB release ###
 TAG = "rs214"
@@ -83,25 +82,35 @@ rule picklist_confirm:
             {input.zip} --fail
         """
 
-rule build_zip:
+rule build_abund_zip:
     input:
         databases = DATABASES,
         manifest = "gtdb-{tag}.manifest.csv",
     output:
-        "gtdb-{tag}-k{k}.zip"
+        "gtdb-{tag}-k{k}.abund.zip"
     shell:
         """
         sourmash sig cat {input.manifest} -k {wildcards.k} -o {output}
         """
 
+rule build_release_zip:
+    input:
+        abund_zip="gtdb-{tag}-k{k}.abund.zip"
+    output:
+        "gtdb-{tag}-k{k}.zip"
+    shell:
+        """
+        sourmash sig flatten {input} -k {wildcards.k} -o {output}
+        """
+
 
 rule build_representatives_zip:
     input:
-        full_zip = "gtdb-{tag}-k{k}.zip",
+        abund_zip = "gtdb-{tag}-k{k}.zip",
         reps_picklist = "gtdb-{tag}.lineages.reps.csv", 
     output:
         "gtdb-{tag}-k{k}.reps.zip"
     shell:
         """
-        sourmash sig cat --picklist {input.reps_picklist}:ident:ident -k {wildcards.k} -o {output}
+        sourmash sig flatten --picklist {input.reps_picklist}:ident:ident -k {wildcards.k} -o {output}
         """
