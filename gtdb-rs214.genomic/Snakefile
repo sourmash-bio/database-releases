@@ -1,10 +1,13 @@
 # update the wort manifest to reflect all available signatures; use updated version here
-DATABASES = ['/group/ctbrowngrp/sourmash-db/wort-manifests/2023-05-05.wort.sqlmf'] # wort manifest
+#DATABASES = ['/group/ctbrowngrp/sourmash-db/wort-manifests/2023-05-05.wort.sqlmf'] # wort manifest
+DATABASES = ['/group/ctbrowngrp/sourmash-db/wort-manifests/entire.2022-04-26.sqlmf'] # wort manifest
 
 ### update with metadata for new GTDB release ###
 TAG = "rs214"
-ARCHAEA_METADATA='https://data.gtdb.ecogenomic.org/releases/release214/214.0/ar53_metadata_r214.tar.gz'
-BACTERIA_METADATA='https://data.gtdb.ecogenomic.org/releases/release214/214.0/bac120_metadata_r214.tar.gz'
+ARCHAEA_URL='https://data.gtdb.ecogenomic.org/releases/release214/214.0/ar53_metadata_r214.tar.gz'
+ARCHAEA_FILE='ar53_metadata_r214.tar.gz'
+BACTERIA_URL='https://data.gtdb.ecogenomic.org/releases/release214/214.0/bac120_metadata_r214.tar.gz'
+BACTERIA_FILE='bac120_metadata_r214.tar.gz'
 ########################################
 KSIZES=[21,31,51]
 
@@ -15,7 +18,8 @@ rule all:
 
 rule build:
     input:
-        expand("gtdb-{tag}-k{k}.zip", tag=TAG, k=KSIZES)
+        expand("gtdb-{tag}-k{k}.zip", tag=TAG, k=KSIZES),
+        expand("gtdb-{tag}-k{k}.reps.zip", tag=TAG, k=KSIZES)
 
 rule check:
     input:
@@ -23,15 +27,20 @@ rule check:
 
 rule download_gtdb_metadata:
     output:
-        ar53_metadata='ar53_metadata_r214.tsv',
-        bac120_metadata='bac120_metadata_r214.tsv',
+        arch_metadata='ar53_metadata_r214.tsv',
+        bac_metadata='bac120_metadata_r214.tsv',
     params:
-        arch_metadata=ARCHAEA_METADATA,
-        bact_metadata=BACTERIA_METADATA,
+        arch_url=ARCHAEA_URL,
+        bact_url=BACTERIA_URL,
+        arch_file=ARCHAEA_FILE,
+        bact_file=BACTERIA_FILE,
     shell: 
         """
-    	curl -s -L {params.arch_metadata} | tar xvz
-	    curl -s -L {params.bact_metadata} | tar xvz
+        wget {params.arch_url}
+        wget {params.bact_url}
+        tar xzvf {params.arch_file}
+        tar xzvf {params.bact_file}
+        rm -rf *tar.gz
         """
 
 rule make_taxonomy:
@@ -39,10 +48,12 @@ rule make_taxonomy:
         ar53_metadata='ar53_metadata_r214.tsv',
         bac120_metadata='bac120_metadata_r214.tsv',
     output:
-        tax_csv="gtdb-{tag}.lineages.csv"
+        tax_csv="gtdb-{tag}.lineages.csv",
+        reps_csv="gtdb-{tag}.lineages.reps.csv",
     shell:
         """
-        python make-gtdb-taxonomy.py --metadata-files {input.ar53_metadata} {input.bac120_metadata} -o {output}
+        python make-gtdb-taxonomy.py --metadata-files {input.ar53_metadata} {input.bac120_metadata} \
+               -o {output.tax_csv} --reps-csv {output.reps_csv}
         """
 
 rule picklist_check:
@@ -66,10 +77,11 @@ rule picklist_confirm:
         zip = "gtdb-{tag}-k{k}.zip",
     output:
         confirm = touch("gtdb-{tag}-k{k}.zip.check")
-    shell: """
+    shell:
+        """
         sourmash sig check --picklist {input.picklist}:ident:ident \
             {input.zip} --fail
-    """
+        """
 
 rule build_zip:
     input:
@@ -80,4 +92,16 @@ rule build_zip:
     shell:
         """
         sourmash sig cat {input.manifest} -k {wildcards.k} -o {output}
+        """
+
+
+rule build_representatives_zip:
+    input:
+        full_zip = "gtdb-{tag}-k{k}.zip",
+        reps_picklist = "gtdb-{tag}.lineages.reps.csv", 
+    output:
+        "gtdb-{tag}-k{k}.reps.zip"
+    shell:
+        """
+        sourmash sig cat --picklist {input.reps_picklist}:ident:ident -k {wildcards.k} -o {output}
         """
