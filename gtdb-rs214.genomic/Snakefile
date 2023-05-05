@@ -1,0 +1,82 @@
+DATABASES = ['../wort-manifests/2023-05-05.wort.sqlmf'] # wort manifest
+KSIZES=[21,31,51]
+
+### update here for new GTDB release ###
+NAME="gtdb-rs214"
+ARCHAEA_METADATA='https://data.gtdb.ecogenomic.org/releases/release214/214.0/ar53_metadata_r214.tar.gz'
+BACTERIA_METADATA='https://data.gtdb.ecogenomic.org/releases/release214/214.0/bac120_metadata_r214.tar.gz'
+########################################
+
+rule all:
+    input:
+        expand("{name}.missing.csv", name=NAME),
+        expand("{name}.manifest.csv", name=NAME),
+
+rule build:
+    input:
+        expand("{name}-k{k}.zip", name=NAME)
+
+rule check:
+    input:
+        expand("{name}-k{k}.zip.check", name=NAME)
+
+rule download_gtdb_metadata:
+    output:
+        ar53_metadata='ar53_metadata_r214.tsv',
+        bac120_metadata='bac120_metadata_r214.tsv',
+    params:
+        arch_metadata=ARCHAEA_METADATA,
+        bact_metadata=BACTERIA_METADATA,
+    shell: 
+        """
+    	curl -s -L {params.arch_metadata} | tar xvz
+	    curl -s -L {params.bact_metadata} | tar xvz
+        """
+
+rule make_taxonomy:
+    input:
+        ar53_metadata='ar53_metadata_r214.tsv',
+        bac120_metadata='bac120_metadata_r214.tsv',
+    output:
+        tax_csv="{name}.lineages.csv"
+    shell:
+        """
+        python make-gtdb-taxonomy.py --metadata-files {input.ar53_metadata} {input.bac120_metadata} -o {output}
+        """
+
+rule picklist_check:
+    input:
+        databases = DATABASES,
+        picklist = "{name}.lineages.csv",
+    output:
+        missing = "{D}.missing.csv",
+        manifest = "{D}.manifest.csv",
+    shell:
+        """
+        sourmash sig check --picklist {input.picklist}:ident:ident \
+            {input.databases} --output-missing {output.missing} \
+            --save-manifest {output.manifest}
+        touch {output.missing}
+        """
+
+rule picklist_confirm:
+    input:
+        picklist = "{name}.lineages.csv",
+        zip = "{name}-k{k}.zip",
+    output:
+        confirm = touch("{name}-k{k}.zip.check.check")
+    shell: """
+        sourmash sig check --picklist {input.picklist}:ident:ident \
+            {input.zip} --fail
+    """
+
+rule build_zip:
+    input:
+        databases = DATABASES,
+        manifest = "{D}.manifest.csv",
+    output:
+        "{name}-k{k}.zip"
+    shell:
+        """
+        sourmash sig cat {input.manifest} -k {wildcards.k} -o {output}
+        """
