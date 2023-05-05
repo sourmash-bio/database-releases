@@ -1,24 +1,25 @@
-DATABASES = ['../wort-manifests/2023-05-05.wort.sqlmf'] # wort manifest
-KSIZES=[21,31,51]
+# update the wort manifest to reflect all available signatures; use updated version here
+DATABASES = ['/group/ctbrowngrp/sourmash-db/wort-manifests/2023-05-05.wort.sqlmf'] # wort manifest
 
-### update here for new GTDB release ###
-NAME="gtdb-rs214"
+### update with metadata for new GTDB release ###
+TAG = "rs214"
 ARCHAEA_METADATA='https://data.gtdb.ecogenomic.org/releases/release214/214.0/ar53_metadata_r214.tar.gz'
 BACTERIA_METADATA='https://data.gtdb.ecogenomic.org/releases/release214/214.0/bac120_metadata_r214.tar.gz'
 ########################################
+KSIZES=[21,31,51]
 
 rule all:
     input:
-        expand("{name}.missing.csv", name=NAME),
-        expand("{name}.manifest.csv", name=NAME),
+        expand("gtdb-{tag}.missing.csv", tag=TAG),
+        expand("gtdb-{tag}.manifest.csv", tag=TAG),
 
 rule build:
     input:
-        expand("{name}-k{k}.zip", name=NAME)
+        expand("gtdb-{tag}-k{k}.zip", tag=TAG, k=KSIZES)
 
 rule check:
     input:
-        expand("{name}-k{k}.zip.check", name=NAME)
+        expand("gtdb-{tag}-k{k}.zip.check", tag=TAG, k=KSIZES)
 
 rule download_gtdb_metadata:
     output:
@@ -38,7 +39,7 @@ rule make_taxonomy:
         ar53_metadata='ar53_metadata_r214.tsv',
         bac120_metadata='bac120_metadata_r214.tsv',
     output:
-        tax_csv="{name}.lineages.csv"
+        tax_csv="gtdb-{tag}.lineages.csv"
     shell:
         """
         python make-gtdb-taxonomy.py --metadata-files {input.ar53_metadata} {input.bac120_metadata} -o {output}
@@ -47,10 +48,10 @@ rule make_taxonomy:
 rule picklist_check:
     input:
         databases = DATABASES,
-        picklist = "{name}.lineages.csv",
+        picklist = "gtdb-{tag}.lineages.csv",
     output:
-        missing = "{D}.missing.csv",
-        manifest = "{D}.manifest.csv",
+        missing = "gtdb-{tag}.missing.csv",
+        manifest = "gtdb-{tag}.manifest.csv",
     shell:
         """
         sourmash sig check --picklist {input.picklist}:ident:ident \
@@ -61,10 +62,10 @@ rule picklist_check:
 
 rule picklist_confirm:
     input:
-        picklist = "{name}.lineages.csv",
-        zip = "{name}-k{k}.zip",
+        picklist = "gtdb-{tag}.lineages.csv",
+        zip = "gtdb-{tag}-k{k}.zip",
     output:
-        confirm = touch("{name}-k{k}.zip.check.check")
+        confirm = touch("gtdb-{tag}-k{k}.zip.check")
     shell: """
         sourmash sig check --picklist {input.picklist}:ident:ident \
             {input.zip} --fail
@@ -73,9 +74,9 @@ rule picklist_confirm:
 rule build_zip:
     input:
         databases = DATABASES,
-        manifest = "{D}.manifest.csv",
+        manifest = "gtdb-{tag}.manifest.csv",
     output:
-        "{name}-k{k}.zip"
+        "gtdb-{tag}-k{k}.zip"
     shell:
         """
         sourmash sig cat {input.manifest} -k {wildcards.k} -o {output}
