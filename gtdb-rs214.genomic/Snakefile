@@ -1,5 +1,5 @@
 ### update the wort manifest to reflect all available signatures; use updated version here
-DATABASES = ['/group/ctbrowngrp/sourmash-db/wort-manifests/2023-05-04.wort.sqlmf'] # wort manifest
+DATABASES = ['/group/ctbrowngrp/sourmash-db/wort-manifests/2023-05-05.wort.sqlmf'] # wort manifest
 
 ### update with metadata for new GTDB release ###
 TAG = "rs214"
@@ -17,12 +17,12 @@ rule all:
 
 rule build:
     input:
-        expand("gtdb-{tag}-k{k}.zip", tag=TAG, k=KSIZES),
-        expand("gtdb-{tag}-k{k}.reps.zip", tag=TAG, k=KSIZES)
+        expand("releases/gtdb-{tag}-k{k}.zip", tag=TAG, k=KSIZES),
+        expand("releases/gtdb-{tag}-k{k}.reps.zip", tag=TAG, k=KSIZES)
 
 rule check:
     input:
-        expand("gtdb-{tag}-k{k}.zip.check", tag=TAG, k=KSIZES)
+        expand("gtdb-{tag}-k{k}.abund.zip.check", tag=TAG, k=KSIZES)
 
 rule download_gtdb_metadata:
     output:
@@ -73,9 +73,9 @@ rule picklist_check:
 rule picklist_confirm:
     input:
         picklist = "gtdb-{tag}.lineages.csv",
-        zip = "gtdb-{tag}-k{k}.zip",
+        zip = "gtdb-{tag}-k{k}.abund.zip",
     output:
-        confirm = touch("gtdb-{tag}-k{k}.zip.check")
+        confirm = touch("gtdb-{tag}-k{k}.abund.zip.check")
     shell:
         """
         sourmash sig check --picklist {input.picklist}:ident:ident \
@@ -97,7 +97,7 @@ rule build_release_zip:
     input:
         abund_zip="gtdb-{tag}-k{k}.abund.zip"
     output:
-        "gtdb-{tag}-k{k}.zip"
+        "releases/gtdb-{tag}-k{k}.zip"
     shell:
         """
         sourmash sig flatten {input} -k {wildcards.k} -o {output}
@@ -109,7 +109,7 @@ rule build_representatives_zip:
         abund_zip = "gtdb-{tag}-k{k}.zip",
         reps_picklist = "gtdb-{tag}.lineages.reps.csv", 
     output:
-        "gtdb-{tag}-k{k}.reps.zip"
+        "releases/gtdb-{tag}-k{k}.reps.zip"
     shell:
         """
         sourmash sig flatten --picklist {input.reps_picklist}:ident:ident -k {wildcards.k} -o {output}
