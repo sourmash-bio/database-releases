@@ -1,0 +1,15 @@
+name: gtdb
+tag: rs214
+ksizes:
+- 21
+- 31
+- 51
+scaled: 1000
+lca_json_scaled: 10000
+archaea_metadata_url: 'https://data.gtdb.ecogenomic.org/releases/release214/214.0/ar53_metadata_r214.tar.gz'
+archaea_metadata_filename: 'ar53_metadata_r214.tar.gz'
+bacteria_metadata_url: 'https://data.gtdb.ecogenomic.org/releases/release214/214.0/bac120_metadata_r214.tar.gz'
+bacteria_metadata_filename: 'bac120_metadata_r214.tar.gz'
+tax_column: 2
+tax_keep_version: True
+

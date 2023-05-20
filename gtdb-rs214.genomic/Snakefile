@@ -1,28 +1,45 @@
 ### update the wort manifest to reflect all available signatures; use updated version here
 DATABASES = ['/group/ctbrowngrp/sourmash-db/wort-manifests/2023-05-05.wort.sqlmf'] # wort manifest
 
-### update with metadata for new GTDB release ###
-TAG = "rs214"
-ARCHAEA_URL='https://data.gtdb.ecogenomic.org/releases/release214/214.0/ar53_metadata_r214.tar.gz'
-ARCHAEA_FILE='ar53_metadata_r214.tar.gz'
-BACTERIA_URL='https://data.gtdb.ecogenomic.org/releases/release214/214.0/bac120_metadata_r214.tar.gz'
-BACTERIA_FILE='bac120_metadata_r214.tar.gz'
-########################################
-KSIZES=[21,31,51]
+configfile: "config.yml"
 
-rule all:
+NAME = config['name']
+TAG = config['tag']
+KSIZES = config['ksizes']
+SCALED = config['scaled']
+
+# taxonomy info
+TAXONOMY_FILE = f"{NAME}-{TAG}.lineages.csv"
+REPS_TAXONOMY_FILE = f"{NAME}-{TAG}.lineages.reps.csv"
+
+wildcard_constraints:
+    filename = "[^/]+"
+ARCHAEA_URL=config['archaea_metadata_url']
+ARCHAEA_FILE=config['archaea_metadata_filename']
+BACTERIA_URL=config['bacteria_metadata_url']
+BACTERIA_FILE=config['bacteria_metadata_filename']
+########################################
+
+wildcard_constraints:
+    ksize = "\d+",
+    name = "[^/]+",
+    tag = "[^/\.]+",
+    filename = "[^/]+"
+
+rule prepare:
     input:
         expand("gtdb-{tag}.missing.csv", tag=TAG),
         expand("gtdb-{tag}.manifest.csv", tag=TAG),
 
 rule build:
     input:
-        expand("releases/gtdb-{tag}-k{k}.zip", tag=TAG, k=KSIZES),
-        expand("releases/gtdb-{tag}-k{k}.reps.zip", tag=TAG, k=KSIZES)
+        expand("gtdb-{tag}-k{k}.abund.zip", tag=TAG, k=KSIZES),
+        expand("gtdb-{tag}-reps.k{k}.abund.zip", tag=TAG, k=KSIZES),
 
 rule check:
     input:
-        expand("gtdb-{tag}-k{k}.abund.zip.check", tag=TAG, k=KSIZES)
+        expand("{name}-{tag}-k{k}.abund.zip.check", name=NAME, tag=TAG, k=KSIZES),
+        expand("{name}-{tag}-reps.k{k}.abund.zip.check", name=NAME, tag=TAG, k=KSIZES),
 
 rule download_gtdb_metadata:
     output:
@@ -47,8 +64,8 @@ rule make_taxonomy:
         ar53_metadata='ar53_metadata_r214.tsv',
         bac120_metadata='bac120_metadata_r214.tsv',
     output:
-        tax_csv="gtdb-{tag}.lineages.csv",
-        reps_csv="gtdb-{tag}.lineages.reps.csv",
+        tax_csv=TAXONOMY_FILE,
+        reps_csv=REPS_TAXONOMY_FILE,
     shell:
         """
         python make-gtdb-taxonomy.py --metadata-files {input.ar53_metadata} {input.bac120_metadata} \
@@ -58,7 +75,7 @@ rule make_taxonomy:
 rule picklist_check:
     input:
         databases = DATABASES,
-        picklist = "gtdb-{tag}.lineages.csv",
+        picklist = TAXONOMY_FILE,
     output:
         missing = "gtdb-{tag}.missing.csv",
         manifest = "gtdb-{tag}.manifest.csv",
@@ -68,18 +85,6 @@ rule picklist_check:
             {input.databases} --output-missing {output.missing} \
             --save-manifest {output.manifest}
         touch {output.missing}
-        """
-
-rule picklist_confirm:
-    input:
-        picklist = "gtdb-{tag}.lineages.csv",
-        zip = "gtdb-{tag}-k{k}.abund.zip",
-    output:
-        confirm = touch("gtdb-{tag}-k{k}.abund.zip.check")
-    shell:
-        """
-        sourmash sig check --picklist {input.picklist}:ident:ident \
-            {input.zip} --fail
         """
 
 rule build_abund_zip:
@@ -93,24 +98,38 @@ rule build_abund_zip:
         sourmash sig cat {input.manifest} -k {wildcards.k} -o {output}
         """
 
-rule build_release_zip:
-    input:
-        abund_zip="gtdb-{tag}-k{k}.abund.zip"
-    output:
-        "releases/gtdb-{tag}-k{k}.zip"
-    shell:
-        """
-        sourmash sig flatten {input} -k {wildcards.k} -o {output}
-        """
-
-
 rule build_representatives_zip:
     input:
-        abund_zip = "gtdb-{tag}-k{k}.zip",
-        reps_picklist = "gtdb-{tag}.lineages.reps.csv", 
+        abund_zip = "gtdb-{tag}-k{k}.abund.zip",
+        reps_picklist = REPS_TAXONOMY_FILE ,
     output:
-        "releases/gtdb-{tag}-k{k}.reps.zip"
+        "gtdb-{tag}-reps.k{k}.abund.zip"
     shell:
         """
-        sourmash sig flatten --picklist {input.reps_picklist}:ident:ident -k {wildcards.k} -o {output}
+        sourmash sig extract {input.abund_zip} --picklist {input.reps_picklist}:ident:ident -k {wildcards.k} -o {output}
         """
+
+rule picklist_confirm:
+    input:
+        picklist = TAXONOMY_FILE, 
+        zip = "gtdb-{tag}-k{k}.abund.zip",
+    output:
+        confirm = touch("gtdb-{tag}-k{k}.abund.zip.check")
+    shell:
+        """
+        sourmash sig check --picklist {input.picklist}:ident:ident \
+            {input.zip} --fail
+        """
+
+rule picklist_confirm_reps:
+    input:
+        picklist = REPS_TAXONOMY_FILE, 
+        zip = "gtdb-{tag}-reps.k{k}.abund.zip",
+    output:
+        confirm = touch("gtdb-{tag}-reps.k{k}.abund.zip.check")
+    shell:
+        """
+        sourmash sig check --picklist {input.picklist}:ident:ident \
+            {input.zip} --fail
+        """
+
