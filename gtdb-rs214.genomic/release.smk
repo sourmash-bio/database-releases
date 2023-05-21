@@ -1,10 +1,11 @@
-import re
 # use the pre-built abund zip to build release databases
+import re
 
 configfile: "config.yml"
 
 NAME = config['name']
 TAG = config['tag']
+RELEASE_DIR= f"/group/ctbrowngrp/sourmash-db/{NAME}-{TAG}"
 KSIZES = config['ksizes']
 SCALED = config['scaled']
 LCA_JSON_SCALED = config['lca_json_scaled']
@@ -24,16 +25,16 @@ ZIP_NAMES = expand([f'{NAME}-{TAG}-k{{k}}', f'{NAME}-{TAG}-reps.k{{k}}'], k=KSIZ
 
 rule all:
     input:
-        expand("releases/{filename}.zip", filename=ZIP_NAMES),
-        expand("releases/{filename}.sbt.zip", filename=ZIP_NAMES),
-        expand("releases/{filename}.lca.json.gz", filename=ZIP_NAMES),
+        expand(f"{RELEASE_DIR}/{{filename}}.zip", filename=ZIP_NAMES),
+        expand(f"{RELEASE_DIR}/{{filename}}.sbt.zip", filename=ZIP_NAMES),
+        expand(f"{RELEASE_DIR}/{{filename}}.lca.json.gz", filename=ZIP_NAMES),
 
 
 rule build_release_zip:
     input:
         abund_zip="{filename}.abund.zip"
     output:
-        "releases/{filename}.zip"
+        f"{RELEASE_DIR}/{{filename}}.zip"
     log: f"LOGS/{{filename}}.release-zip.log"
     benchmark: f"LOGS/{{filename}}.release-zip.benchmark"
     shell:
@@ -47,7 +48,7 @@ rule wc_build_sbt:
     input:
         db = "{filename}.abund.zip",
     output:
-        sbt = "releases/{filename}.sbt.zip",
+        sbt = f"{RELEASE_DIR}/{{filename}}.sbt.zip",
     params:
         scaled = SCALED,
     log: f"LOGS/{{filename}}.release-sbt.log"
@@ -62,7 +63,7 @@ rule wc_build_lca:
     input:
         db = "{filename}.abund.zip",
     output:
-        lca_db = "releases/{filename}.lca.json.gz",
+        lca_db = f"{RELEASE_DIR}/{{filename}}.lca.json.gz",
     params:
         tax = lambda w: REPS_TAXONOMY_FILE if 'reps' in w.filename else TAXONOMY_FILE,
         colnum = TAXONOMY_COLNUM,
