@@ -1,7 +1,6 @@
-### update the wort manifest to reflect all available signatures; use updated version here
-DATABASES = ['/group/ctbrowngrp/sourmash-db/wort-manifests/2023-05-05.wort.sqlmf'] # wort manifest
-
 configfile: "config.yml"
+
+DATABASES = config['wort_manifest'] 
 
 NAME = config['name']
 TAG = config['tag']
@@ -18,6 +17,10 @@ ARCHAEA_URL=config['archaea_metadata_url']
 ARCHAEA_FILE=config['archaea_metadata_filename']
 BACTERIA_URL=config['bacteria_metadata_url']
 BACTERIA_FILE=config['bacteria_metadata_filename']
+
+# logs dir
+LOGS='logs'
+
 ########################################
 
 wildcard_constraints:
@@ -79,11 +82,13 @@ rule picklist_check:
     output:
         missing = "gtdb-{tag}.missing.csv",
         manifest = "gtdb-{tag}.manifest.csv",
+    log: f"{LOGS}/gtdb-{{tag}}.picklist_check.log"
+    benchmark: f"{LOGS}/gtdb-{{tag}}.picklist_check.benchmark"
     shell:
         """
         sourmash sig check --picklist {input.picklist}:ident:ident \
             {input.databases} --output-missing {output.missing} \
-            --save-manifest {output.manifest}
+            --save-manifest {output.manifest} 2> {log}
         touch {output.missing}
         """
 
@@ -93,20 +98,24 @@ rule build_abund_zip:
         manifest = "gtdb-{tag}.manifest.csv",
     output:
         "gtdb-{tag}-k{k}.abund.zip"
+    log: f"{LOGS}/gtdb-{{tag}}-k{{k}}.build_abund_zip.log"
+    benchmark: f"{LOGS}/gtdb-{{tag}}-k{{k}}.build_abund_zip.benchmark"
     shell:
         """
-        sourmash sig cat {input.manifest} -k {wildcards.k} -o {output}
+        sourmash sig cat {input.manifest} -k {wildcards.k} -o {output} 2> {log}
         """
 
-rule build_representatives_zip:
+rule extract_representatives_zip:
     input:
         abund_zip = "gtdb-{tag}-k{k}.abund.zip",
         reps_picklist = REPS_TAXONOMY_FILE ,
     output:
         "gtdb-{tag}-reps.k{k}.abund.zip"
+    log: f"{LOGS}/gtdb-{{tag}}-k{{k}}.extract_reps_zip.log"
+    benchmark: f"{LOGS}/gtdb-{{tag}}-k{{k}}.extract_reps_zip.benchmark"
     shell:
         """
-        sourmash sig extract {input.abund_zip} --picklist {input.reps_picklist}:ident:ident -k {wildcards.k} -o {output}
+        sourmash sig extract {input.abund_zip} --picklist {input.reps_picklist}:ident:ident -k {wildcards.k} -o {output} 2> {log}
         """
 
 rule picklist_confirm:
@@ -115,10 +124,12 @@ rule picklist_confirm:
         zip = "gtdb-{tag}-k{k}.abund.zip",
     output:
         confirm = touch("gtdb-{tag}-k{k}.abund.zip.check")
+    log: f"{LOGS}/gtdb-{{tag}}-k{{k}}.abund.picklist_confirm.log"
+    benchmark: f"{LOGS}/gtdb-{{tag}}-k{{k}}.abund.picklist_confirm.benchmark"
     shell:
         """
         sourmash sig check --picklist {input.picklist}:ident:ident \
-            {input.zip} --fail
+            {input.zip} --fail 2> {log}
         """
 
 rule picklist_confirm_reps:
@@ -127,9 +138,11 @@ rule picklist_confirm_reps:
         zip = "gtdb-{tag}-reps.k{k}.abund.zip",
     output:
         confirm = touch("gtdb-{tag}-reps.k{k}.abund.zip.check")
+    log: f"{LOGS}/gtdb-{{tag}}-k{{k}}.reps.picklist_confirm.log"
+    benchmark: f"{LOGS}/gtdb-{{tag}}-k{{k}}.reps.picklist_confirm.benchmark"
     shell:
         """
         sourmash sig check --picklist {input.picklist}:ident:ident \
-            {input.zip} --fail
+            {input.zip} --fail 2> {log}
         """
 

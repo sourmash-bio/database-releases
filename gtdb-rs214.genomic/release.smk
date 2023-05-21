@@ -9,16 +9,13 @@ KSIZES = config['ksizes']
 SCALED = config['scaled']
 LCA_JSON_SCALED = config['lca_json_scaled']
 
-# identifier info
-#IDENTIFIERS = config['identifiers']
-#IDENTIFIER_COL = config['identifier_col']
-#IDENTIFIER_TYPE = config['identifier_type']
-
 # taxonomy info
 TAXONOMY_FILE = f"{NAME}-{TAG}.lineages.csv"
 REPS_TAXONOMY_FILE = f"{NAME}-{TAG}.lineages.reps.csv"
 TAXONOMY_COLNUM = int(config['tax_column'])
 TAXONOMY_KEEP_VERSION = bool(config['tax_keep_version'])
+
+LOGS = "logs"
 
 wildcard_constraints:
     filename = "[^/]+"
@@ -31,18 +28,14 @@ rule all:
         expand("releases/{filename}.sbt.zip", filename=ZIP_NAMES),
         expand("releases/{filename}.lca.json.gz", filename=ZIP_NAMES),
 
-#rule check:
-#    input:
-#        expand("releases/{filename}.zip.check", name=NAME, tag=TAG, ksize=KSIZES),
-#        expand("releases/{filename}.sbt.zip.check", name=NAME, tag=TAG, ksize=KSIZES),
-#        expand("releases/{filename}.lca.json.gz.check", name=NAME, tag=TAG, ksize=KSIZES),
-
 
 rule build_release_zip:
     input:
         abund_zip="{filename}.abund.zip"
     output:
         "releases/{filename}.zip"
+    log: f"LOGS/{{filename}}.release-zip.log"
+    benchmark: f"LOGS/{{filename}}.release-zip.benchmark"
     shell:
         """
         sourmash sig flatten {input} -o {output}
@@ -57,6 +50,8 @@ rule wc_build_sbt:
         sbt = "releases/{filename}.sbt.zip",
     params:
         scaled = SCALED,
+    log: f"LOGS/{{filename}}.release-sbt.log"
+    benchmark: f"LOGS/{{filename}}.release-sbt.benchmark"
     shell: 
         """
         sourmash index {output.sbt} {input.db} --scaled={params.scaled}
@@ -74,6 +69,8 @@ rule wc_build_lca:
         keep_ident_version = "--keep-identifier-v" if TAXONOMY_KEEP_VERSION else "",
         scaled = LCA_JSON_SCALED,
         ksize = lambda w: re.search(r'k(\d+)', w.filename).group(1),
+    log: f"LOGS/{{filename}}.release-lca.log"
+    benchmark: f"LOGS/{{filename}}.release-lca.benchmark"
     shell: 
         """
         sourmash lca index {params.tax} {output.lca_db} {input.db} \

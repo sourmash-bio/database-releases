@@ -1,5 +1,8 @@
 name: gtdb
 tag: rs214
+### update the wort manifest to reflect all available signatures; use updated version here
+# update this via script in /group/ctbrowngrp/sourmash-db/wort-manifests/
+wort_manifest: '/group/ctbrowngrp/sourmash-db/wort-manifests/2023-05-05.wort.sqlmf'
 ksizes:
 - 21
 - 31
