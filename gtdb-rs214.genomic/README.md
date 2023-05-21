@@ -11,6 +11,7 @@ bash /group/ctbrowngrp/sourmash-db/wort-manifests/update-wort-manifest.sh
 6. run `snakemake check` to check that these zipfiles have all needed sigs
 7. run `snakemake -s release.smk` to build sbt, lca db's from the zipfiles
 8. release databases will be in `/group/ctbrowngrp/sourmash-db/{name}-{tag}`, using params you set in `config.yml`
+9. update sourmash docs (databases.md) with the new db information
 
 Notes:
 - building SBTs requires more memory than any other db. I will add resources to rules after benchmarking (tbd)
