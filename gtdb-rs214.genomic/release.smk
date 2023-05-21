@@ -1,3 +1,4 @@
+import re
 # use the pre-built abund zip to build release databases
 
 configfile: "config.yml"
@@ -72,11 +73,12 @@ rule wc_build_lca:
         colnum = TAXONOMY_COLNUM,
         keep_ident_version = "--keep-identifier-v" if TAXONOMY_KEEP_VERSION else "",
         scaled = LCA_JSON_SCALED,
+        ksize = lambda w: re.search(r'k(\d+)', w.filename).group(1),
     shell: 
         """
         sourmash lca index {params.tax} {output.lca_db} {input.db} \
            -C {params.colnum} {params.keep_ident_version} \
            --fail-on-missing-taxonomy --split-identifiers --require-taxonomy \
-           --scaled={params.scaled}
+           --scaled={params.scaled} --ksize {params.ksize}
         """
 
