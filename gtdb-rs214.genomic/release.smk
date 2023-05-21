@@ -39,7 +39,7 @@ rule build_release_zip:
     benchmark: f"LOGS/{{filename}}.release-zip.benchmark"
     shell:
         """
-        sourmash sig flatten {input} -o {output}
+        sourmash sig flatten {input} -o {output} 2> {log}
         """
 
 
@@ -55,7 +55,7 @@ rule wc_build_sbt:
     benchmark: f"LOGS/{{filename}}.release-sbt.benchmark"
     shell: 
         """
-        sourmash index {output.sbt} {input.db} --scaled={params.scaled}
+        sourmash index {output.sbt} {input.db} --scaled={params.scaled} 2> {log}
         """
 
 rule wc_build_lca:
@@ -77,6 +77,6 @@ rule wc_build_lca:
         sourmash lca index {params.tax} {output.lca_db} {input.db} \
            -C {params.colnum} {params.keep_ident_version} \
            --fail-on-missing-taxonomy --split-identifiers --require-taxonomy \
-           --scaled={params.scaled} --ksize {params.ksize}
+           --scaled={params.scaled} --ksize {params.ksize} 2> {log}
         """
 
