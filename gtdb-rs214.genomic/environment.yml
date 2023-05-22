@@ -1,4 +1,4 @@
-name: database-releases
+name: release-gtdb-rs214
 channels:
   - conda-forge
   - bioconda
