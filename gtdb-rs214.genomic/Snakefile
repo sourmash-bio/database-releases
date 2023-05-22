@@ -1,3 +1,20 @@
+"""
+#### Build db zipfile from existing wort signatures ####
+
+To use the 'resources' information in each rule, set up
+a snakemake profile for slurm job submission and pass it
+into snakemake when running, e.g.
+
+    `snakemake --profile slurm`
+
+These resources represent my best guess, as I ran this
+workflow interactively prior to adding benchmarking.
+Benchmark files should now be produced here that
+can be used to tune resources in the future if needed.
+
+Resource 'time' is excessive as jobs will exit when finished.
+"""
+
 configfile: "config.yml"
 
 DATABASES = config['wort_manifest'] 
@@ -53,6 +70,11 @@ rule download_gtdb_metadata:
         bact_url=BACTERIA_URL,
         arch_file=ARCHAEA_FILE,
         bact_file=BACTERIA_FILE,
+    threads: 1
+    resources:
+        mem_mb= lambda wildcards, attempt: attempt * 3000,
+        time= 240,
+        partition='high2',
     shell: 
         """
         wget {params.arch_url}
@@ -69,6 +91,11 @@ rule make_taxonomy:
     output:
         tax_csv=TAXONOMY_FILE,
         reps_csv=REPS_TAXONOMY_FILE,
+    threads: 1
+    resources:
+        mem_mb= lambda wildcards, attempt: attempt * 3000,
+        time= 240,
+        partition='high2',
     shell:
         """
         python make-gtdb-taxonomy.py --metadata-files {input.ar53_metadata} {input.bac120_metadata} \
@@ -84,6 +111,11 @@ rule picklist_check:
         manifest = "gtdb-{tag}.manifest.csv",
     log: f"{LOGS}/gtdb-{{tag}}.picklist_check.log"
     benchmark: f"{LOGS}/gtdb-{{tag}}.picklist_check.benchmark"
+    threads: 1
+    resources:
+        mem_mb= lambda wildcards, attempt: attempt * 6000,
+        time= 10000,
+        partition='high2',
     shell:
         """
         sourmash sig check --picklist {input.picklist}:ident:ident \
@@ -100,6 +132,11 @@ rule build_abund_zip:
         "gtdb-{tag}-k{k}.abund.zip"
     log: f"{LOGS}/gtdb-{{tag}}-k{{k}}.build_abund_zip.log"
     benchmark: f"{LOGS}/gtdb-{{tag}}-k{{k}}.build_abund_zip.benchmark"
+    threads: 1
+    resources:
+        mem_mb= lambda wildcards, attempt: attempt * 10000,
+        time= 6000,
+        partition='bmh',
     shell:
         """
         sourmash sig cat {input.manifest} -k {wildcards.k} -o {output} 2> {log}
@@ -113,6 +150,11 @@ rule extract_representatives_zip:
         "gtdb-{tag}-reps.k{k}.abund.zip"
     log: f"{LOGS}/gtdb-{{tag}}-k{{k}}.extract_reps_zip.log"
     benchmark: f"{LOGS}/gtdb-{{tag}}-k{{k}}.extract_reps_zip.benchmark"
+    threads: 1
+    resources:
+        mem_mb= lambda wildcards, attempt: attempt * 3000,
+        time= 6000,
+        partition='high2',
     shell:
         """
         sourmash sig extract {input.abund_zip} --picklist {input.reps_picklist}:ident:ident -k {wildcards.k} -o {output} 2> {log}
@@ -126,6 +168,11 @@ rule picklist_confirm:
         confirm = touch("gtdb-{tag}-k{k}.abund.zip.check")
     log: f"{LOGS}/gtdb-{{tag}}-k{{k}}.abund.picklist_confirm.log"
     benchmark: f"{LOGS}/gtdb-{{tag}}-k{{k}}.abund.picklist_confirm.benchmark"
+    threads: 1
+    resources:
+        mem_mb= lambda wildcards, attempt: attempt * 3000,
+        time=6000,
+        partition='high2',
     shell:
         """
         sourmash sig check --picklist {input.picklist}:ident:ident \
@@ -140,6 +187,11 @@ rule picklist_confirm_reps:
         confirm = touch("gtdb-{tag}-reps.k{k}.abund.zip.check")
     log: f"{LOGS}/gtdb-{{tag}}-k{{k}}.reps.picklist_confirm.log"
     benchmark: f"{LOGS}/gtdb-{{tag}}-k{{k}}.reps.picklist_confirm.benchmark"
+    threads: 1
+    resources:
+        mem_mb= lambda wildcards, attempt: attempt * 3000,
+        time= 600,
+        partition='high2',
     shell:
         """
         sourmash sig check --picklist {input.picklist}:ident:ident \

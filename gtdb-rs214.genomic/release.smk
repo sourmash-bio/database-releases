@@ -1,4 +1,20 @@
-# use the pre-built abund zip to build release databases
+"""
+#### Use db zipfile to build add'l release databases ####
+
+To use the 'resources' information in each rule, set up
+a snakemake profile for slurm job submission and pass it
+into snakemake when running, e.g.
+
+    `snakemake -s release.smk --profile slurm`
+
+These resources represent real values from running
+gtdb-rs214, with some padding. If memory limits are
+hit and your profile allows job restarts (`restart-times`),
+memory will be multiplied by the current attempt number
+(e.g. if 3G on 1st attempt, 6G on second, 9G on third).
+
+Resource 'time' is excessive as jobs will exit when finished.
+"""
 import re
 
 configfile: "config.yml"
@@ -35,8 +51,13 @@ rule build_release_zip:
         abund_zip="{filename}.abund.zip"
     output:
         f"{RELEASE_DIR}/{{filename}}.zip"
-    log: f"LOGS/{{filename}}.release-zip.log"
-    benchmark: f"LOGS/{{filename}}.release-zip.benchmark"
+    threads: 1
+    resources:
+        mem_mb= lambda wildcards, attempt: attempt * 20000, # 214 reps needed <5G; full <14G
+        time= 6000,
+        partition='bmh',
+    log: f"{LOGS}/{{filename}}.release-zip.log"
+    benchmark: f"{LOGS}/{{filename}}.release-zip.benchmark"
     shell:
         """
         sourmash sig flatten {input} -o {output} 2> {log}
@@ -51,8 +72,14 @@ rule wc_build_sbt:
         sbt = f"{RELEASE_DIR}/{{filename}}.sbt.zip",
     params:
         scaled = SCALED,
-    log: f"LOGS/{{filename}}.release-sbt.log"
-    benchmark: f"LOGS/{{filename}}.release-sbt.benchmark"
+    threads: 1
+    resources:
+        mem_mb=5000, # 5G
+        mem_mb= lambda wildcards, attempt: attempt * 60000, # 214 reps needed <10G; full <50G
+        time= 6000,
+        partition='bmh',
+    log: f"{LOGS}/{{filename}}.release-sbt.log"
+    benchmark: f"{LOGS}/{{filename}}.release-sbt.benchmark"
     shell: 
         """
         sourmash index {output.sbt} {input.db} --scaled={params.scaled} 2> {log}
@@ -70,8 +97,13 @@ rule wc_build_lca:
         keep_ident_version = "--keep-identifier-v" if TAXONOMY_KEEP_VERSION else "",
         scaled = LCA_JSON_SCALED,
         ksize = lambda w: re.search(r'k(\d+)', w.filename).group(1),
-    log: f"LOGS/{{filename}}.release-lca.log"
-    benchmark: f"LOGS/{{filename}}.release-lca.benchmark"
+    threads: 1
+    resources:
+        mem_mb= lambda wildcards, attempt: attempt * 35000, # 214 reps needed <12G; full <30G
+        time= 6000,
+        partition='bmh',
+    log: f"{LOGS}/{{filename}}.release-lca.log"
+    benchmark: f"{LOGS}/{{filename}}.release-lca.benchmark"
     shell: 
         """
         sourmash lca index {params.tax} {output.lca_db} {input.db} \
