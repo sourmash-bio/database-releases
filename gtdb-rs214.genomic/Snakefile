@@ -1,0 +1,200 @@
+"""
+#### Build db zipfile from existing wort signatures ####
+
+To use the 'resources' information in each rule, set up
+a snakemake profile for slurm job submission and pass it
+into snakemake when running, e.g.
+
+    `snakemake --profile slurm`
+
+These resources represent my best guess, as I ran this
+workflow interactively prior to adding benchmarking.
+Benchmark files should now be produced here that
+can be used to tune resources in the future if needed.
+
+Resource 'time' is excessive as jobs will exit when finished.
+"""
+
+configfile: "config.yml"
+
+DATABASES = config['wort_manifest'] 
+
+NAME = config['name']
+TAG = config['tag']
+KSIZES = config['ksizes']
+SCALED = config['scaled']
+
+# taxonomy info
+TAXONOMY_FILE = f"{NAME}-{TAG}.lineages.csv"
+REPS_TAXONOMY_FILE = f"{NAME}-{TAG}.lineages.reps.csv"
+
+wildcard_constraints:
+    filename = "[^/]+"
+ARCHAEA_URL=config['archaea_metadata_url']
+ARCHAEA_FILE=config['archaea_metadata_filename']
+BACTERIA_URL=config['bacteria_metadata_url']
+BACTERIA_FILE=config['bacteria_metadata_filename']
+
+# logs dir
+LOGS='logs'
+
+########################################
+
+wildcard_constraints:
+    ksize = "\d+",
+    name = "[^/]+",
+    tag = "[^/\.]+",
+    filename = "[^/]+"
+
+rule prepare:
+    input:
+        expand("gtdb-{tag}.missing.csv", tag=TAG),
+        expand("gtdb-{tag}.manifest.csv", tag=TAG),
+
+rule build:
+    input:
+        expand("gtdb-{tag}-k{k}.abund.zip", tag=TAG, k=KSIZES),
+        expand("gtdb-{tag}-reps.k{k}.abund.zip", tag=TAG, k=KSIZES),
+
+rule check:
+    input:
+        expand("{name}-{tag}-k{k}.abund.zip.check", name=NAME, tag=TAG, k=KSIZES),
+        expand("{name}-{tag}-reps.k{k}.abund.zip.check", name=NAME, tag=TAG, k=KSIZES),
+
+rule download_gtdb_metadata:
+    output:
+        arch_metadata='ar53_metadata_r214.tsv',
+        bac_metadata='bac120_metadata_r214.tsv',
+    params:
+        arch_url=ARCHAEA_URL,
+        bact_url=BACTERIA_URL,
+        arch_file=ARCHAEA_FILE,
+        bact_file=BACTERIA_FILE,
+    threads: 1
+    resources:
+        mem_mb= lambda wildcards, attempt: attempt * 3000,
+        time= 240,
+        partition='high2',
+    shell: 
+        """
+        wget {params.arch_url}
+        wget {params.bact_url}
+        tar xzvf {params.arch_file}
+        tar xzvf {params.bact_file}
+        rm -rf *tar.gz
+        """
+
+rule make_taxonomy:
+    input:
+        ar53_metadata='ar53_metadata_r214.tsv',
+        bac120_metadata='bac120_metadata_r214.tsv',
+    output:
+        tax_csv=TAXONOMY_FILE,
+        reps_csv=REPS_TAXONOMY_FILE,
+    threads: 1
+    resources:
+        mem_mb= lambda wildcards, attempt: attempt * 3000,
+        time= 240,
+        partition='high2',
+    shell:
+        """
+        python make-gtdb-taxonomy.py --metadata-files {input.ar53_metadata} {input.bac120_metadata} \
+               -o {output.tax_csv} --reps-csv {output.reps_csv}
+        """
+
+rule picklist_check:
+    input:
+        databases = DATABASES,
+        picklist = TAXONOMY_FILE,
+    output:
+        missing = "gtdb-{tag}.missing.csv",
+        manifest = "gtdb-{tag}.manifest.csv",
+    log: f"{LOGS}/gtdb-{{tag}}.picklist_check.log"
+    benchmark: f"{LOGS}/gtdb-{{tag}}.picklist_check.benchmark"
+    threads: 1
+    resources:
+        mem_mb= lambda wildcards, attempt: attempt * 6000,
+        time= 10000,
+        partition='high2',
+    shell:
+        """
+        sourmash sig check --picklist {input.picklist}:ident:ident \
+            {input.databases} --output-missing {output.missing} \
+            --save-manifest {output.manifest} 2> {log}
+        touch {output.missing}
+        """
+
+rule build_abund_zip:
+    input:
+        databases = DATABASES,
+        manifest = "gtdb-{tag}.manifest.csv",
+    output:
+        "gtdb-{tag}-k{k}.abund.zip"
+    log: f"{LOGS}/gtdb-{{tag}}-k{{k}}.build_abund_zip.log"
+    benchmark: f"{LOGS}/gtdb-{{tag}}-k{{k}}.build_abund_zip.benchmark"
+    threads: 1
+    resources:
+        mem_mb= lambda wildcards, attempt: attempt * 10000,
+        time= 6000,
+        partition='bmh',
+    shell:
+        """
+        sourmash sig cat {input.manifest} -k {wildcards.k} -o {output} 2> {log}
+        """
+
+rule extract_representatives_zip:
+    input:
+        abund_zip = "gtdb-{tag}-k{k}.abund.zip",
+        reps_picklist = REPS_TAXONOMY_FILE ,
+    output:
+        "gtdb-{tag}-reps.k{k}.abund.zip"
+    log: f"{LOGS}/gtdb-{{tag}}-k{{k}}.extract_reps_zip.log"
+    benchmark: f"{LOGS}/gtdb-{{tag}}-k{{k}}.extract_reps_zip.benchmark"
+    threads: 1
+    resources:
+        mem_mb= lambda wildcards, attempt: attempt * 3000,
+        time= 6000,
+        partition='high2',
+    shell:
+        """
+        sourmash sig extract {input.abund_zip} --picklist {input.reps_picklist}:ident:ident -k {wildcards.k} -o {output} 2> {log}
+        """
+
+rule picklist_confirm:
+    input:
+        picklist = TAXONOMY_FILE, 
+        zip = "gtdb-{tag}-k{k}.abund.zip",
+    output:
+        confirm = touch("gtdb-{tag}-k{k}.abund.zip.check")
+    log: f"{LOGS}/gtdb-{{tag}}-k{{k}}.abund.picklist_confirm.log"
+    benchmark: f"{LOGS}/gtdb-{{tag}}-k{{k}}.abund.picklist_confirm.benchmark"
+    threads: 1
+    resources:
+        mem_mb= lambda wildcards, attempt: attempt * 3000,
+        time=6000,
+        partition='high2',
+    shell:
+        """
+        sourmash sig check --picklist {input.picklist}:ident:ident \
+            {input.zip} --fail 2> {log}
+        """
+
+rule picklist_confirm_reps:
+    input:
+        picklist = REPS_TAXONOMY_FILE, 
+        zip = "gtdb-{tag}-reps.k{k}.abund.zip",
+    output:
+        confirm = touch("gtdb-{tag}-reps.k{k}.abund.zip.check")
+    log: f"{LOGS}/gtdb-{{tag}}-k{{k}}.reps.picklist_confirm.log"
+    benchmark: f"{LOGS}/gtdb-{{tag}}-k{{k}}.reps.picklist_confirm.benchmark"
+    threads: 1
+    resources:
+        mem_mb= lambda wildcards, attempt: attempt * 3000,
+        time= 600,
+        partition='high2',
+    shell:
+        """
+        sourmash sig check --picklist {input.picklist}:ident:ident \
+            {input.zip} --fail 2> {log}
+        """
+

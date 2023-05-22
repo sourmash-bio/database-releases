@@ -1,0 +1,9 @@
+name: release-gtdb-rs214
+channels:
+  - conda-forge
+  - bioconda
+  - defaults
+dependencies:
+  - snakemake>=7.25,<8
+  - pandas>2,<3
+  - sourmash>4.8,<5

@@ -1,0 +1,17 @@
+release_dir: "/group/ctbrowngrp/sourmash-db" # db's will be built in {release_dir}/{name}-{tag} folder
+name: gtdb
+tag: rs214
+wort_manifest: '/group/ctbrowngrp/sourmash-db/wort-manifests/2023-05-05.wort.sqlmf'
+ksizes:
+- 21
+- 31
+- 51
+scaled: 1000
+lca_json_scaled: 10000
+archaea_metadata_url: 'https://data.gtdb.ecogenomic.org/releases/release214/214.0/ar53_metadata_r214.tar.gz'
+archaea_metadata_filename: 'ar53_metadata_r214.tar.gz'
+bacteria_metadata_url: 'https://data.gtdb.ecogenomic.org/releases/release214/214.0/bac120_metadata_r214.tar.gz'
+bacteria_metadata_filename: 'bac120_metadata_r214.tar.gz'
+tax_column: 3
+tax_keep_version: True
+
