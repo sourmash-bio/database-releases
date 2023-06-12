@@ -1,0 +1,81 @@
+DOMAINS=['archaea',
+         'fungi',
+         'protozoa',
+         'bacteria',
+         'viral']
+
+TAG='latest'
+DATABASES = ['/group/ctbrowngrp/sourmash-db/wort-manifests/2023-05-31.wort.sqlmf']
+KSIZES=[21,31,51]
+LOGS='logs'
+
+rule all:
+    input:
+        expand("{D}.missing.csv", D=DOMAINS),
+        expand("{D}.manifest.csv", D=DOMAINS),
+
+rule build:
+    input:
+        expand("genbank-latest-{D}-k{k}.zip", D=DOMAINS, k=KSIZES)
+
+rule check:
+    input:
+        expand("genbank-latest-{D}-k{k}.zip.check", D=DOMAINS, k=KSIZES)
+
+rule download_assembly_summary:
+    output:
+        '{D}.assembly_summary.txt'
+    shell: """
+        curl -L https://ftp.ncbi.nlm.nih.gov/genomes/genbank/{wildcards.D}/assembly_summary.txt > {output}
+    """
+
+rule make_idents:
+    input:
+        '{D}.assembly_summary.txt'
+    output:
+        "{D}.idents.csv"
+    shell: """
+        echo ident > {output}
+        cut -f1 {input} | grep -v ^# >> {output}
+    """
+
+rule picklist_check:
+    input:
+        databases = DATABASES,
+        picklist = "{D}.idents.csv",
+    output:
+        missing = "{D}.missing.csv",
+        manifest = "{D}.manifest.csv",
+    log: f"{LOGS}/{{D}}.picklist-check.log"
+    benchmark: f"{LOGS}/{{D}}.picklist-check.benchmark"
+    shell: """
+        sourmash sig check --picklist {input.picklist}:ident:ident \
+            {input.databases} --output-missing {output.missing} \
+            --save-manifest {output.manifest}
+        touch {output.missing}
+    """
+
+rule picklist_confirm:
+    input:
+        picklist = "{D}.idents.csv",
+        zip = "genbank-latest-{D}-k{k}.zip",
+    output:
+        confirm = touch("genbank-latest-{D}-k{k}.zip.check")
+    log: f"{LOGS}/{{D}}-k{{k}}.picklist-confirm.log"
+    benchmark: f"{LOGS}/{{D}}-k{{k}}.picklist-confirm.benchmark"
+    shell: """
+        sourmash sig check --picklist {input.picklist}:ident:ident \
+            {input.zip} --fail
+    """
+
+rule build_zip:
+    input:
+        databases = DATABASES,
+        manifest = "{D}.manifest.csv",
+    output:
+        "genbank-latest-{D}-k{k}.zip"
+    log: f"{LOGS}/{{D}}-{{k}}.build-zip.log"
+    benchmark: f"{LOGS}/{{D}}-{{k}}.build-zip.benchmark"
+    shell: """
+        sourmash sig cat {input.manifest} -k {wildcards.k} -o {output}
+    """
