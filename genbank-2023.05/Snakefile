@@ -13,6 +13,7 @@ rule all:
     input:
         expand("{D}.missing.csv", D=DOMAINS),
         expand("{D}.manifest.csv", D=DOMAINS),
+        expand("{domain}.lineages.csv", domain=DOMAINS),
 
 rule build:
     input:
@@ -21,6 +22,10 @@ rule build:
 rule check:
     input:
         expand("genbank-latest-{D}-k{k}.zip.check", D=DOMAINS, k=KSIZES)
+
+rule tax:
+    input:
+        expand("{domain}.lineages.csv", domain=DOMAINS)
 
 rule download_assembly_summary:
     output:
@@ -51,7 +56,7 @@ rule picklist_check:
     shell: """
         sourmash sig check --picklist {input.picklist}:ident:ident \
             {input.databases} --output-missing {output.missing} \
-            --save-manifest {output.manifest}
+            --save-manifest {output.manifest} 2> {log}
         touch {output.missing}
     """
 
@@ -65,7 +70,7 @@ rule picklist_confirm:
     benchmark: f"{LOGS}/{{D}}-k{{k}}.picklist-confirm.benchmark"
     shell: """
         sourmash sig check --picklist {input.picklist}:ident:ident \
-            {input.zip} --fail
+            {input.zip} --fail 2> {log}
     """
 
 rule build_zip:
@@ -77,5 +82,38 @@ rule build_zip:
     log: f"{LOGS}/{{D}}-{{k}}.build-zip.log"
     benchmark: f"{LOGS}/{{D}}-{{k}}.build-zip.benchmark"
     shell: """
-        sourmash sig cat {input.manifest} -k {wildcards.k} -o {output}
+        sourmash sig cat {input.manifest} -k {wildcards.k} -o {output} 2> {log}
     """
+
+# taxonomy rules, from https://github.com/ctb/2022-assembly-summary-to-lineages
+rule download_ncbi_utils:
+    output: "ncbi_taxdump_utils.py"
+    shell:
+        "curl -JLO https://raw.githubusercontent.com/ctb/2022-assembly-summary-to-lineages/main/ncbi_taxdump_utils.py"
+
+rule download_taxscript:
+    output: "make-lineage-csv.py"
+    shell:
+        "curl -JLO https://raw.githubusercontent.com/bluegenes/2022-assembly-summary-to-lineages/virus-tax/make-lineage-csv.py"
+
+rule download_taxdump: # may need to restart this a couple times
+    output:
+        "taxdump/nodes.dmp",
+        "taxdump/names.dmp"
+    shell:
+        "curl -L ftp://ftp.ncbi.nlm.nih.gov/pub/taxonomy/taxdump.tar.gz | (mkdir -p taxdump && cd taxdump && tar xzvf -)"
+
+rule make_lineage_csv:
+    input:
+        "{name}.assembly_summary.txt",
+        "taxdump/nodes.dmp",
+        "taxdump/names.dmp",
+        "make-lineage-csv.py",
+        "ncbi_taxdump_utils.py",
+    output:
+        "{name}.lineages.csv"
+    params:
+        ictv_cmd = lambda w: " --ictv " if 'viral' in w.name else '',
+    shell:
+        "python make-lineage-csv.py taxdump/{{nodes.dmp,names.dmp}} {input[0]} -o {output} {params.ictv_cmd}"
+
