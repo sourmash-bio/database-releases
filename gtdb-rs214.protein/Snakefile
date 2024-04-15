@@ -1,0 +1,387 @@
+"""
+#### Build protein databases for GTDB
+
+To use the 'resources' information in each rule, set up
+a snakemake profile for slurm job submission and pass it
+into snakemake when running, e.g.
+
+    `snakemake --profile slurm`
+
+These resources represent my best guess, as I ran this
+workflow interactively prior to adding benchmarking.
+Benchmark files should now be produced here that
+can be used to tune resources in the future if needed.
+
+Resource 'time' is excessive as jobs will exit when finished.
+"""
+import csv
+import urllib
+import pandas as pd
+
+configfile: "config.yml"
+
+NAME = config['name']
+TAG = config['tag']
+KSIZES = config['ksizes']
+SCALED = config['scaled']
+
+DATABASES = config['prior_releases']
+LINEAGES = config['lineages']
+REPS_LINEAGES = config['reps_lineages']
+
+wildcard_constraints:
+    filename = "[^/]+"
+
+# logs dir
+LOGS='logs'
+
+ACCESSIONS = []
+
+with open(LINEAGES, 'r') as inF:
+    reader = csv.DictReader(inF)
+    for row in reader:
+        ACCESSIONS.append(row['ident'])
+
+########################################
+
+wildcard_constraints:
+    # ksize = "\d+",
+    name = "[^/]+",
+    # tag = "[^/\.]+",
+    filename = "[^/]+"
+
+class Checkpoint_MakePattern:
+    def __init__(self, pattern):
+        self.pattern = pattern
+    
+    # get protein fasta filenames from the fromfile.csv
+    def get_filenames(self, basename=None, moltype=None):
+        fastas = []
+        with open(f"{NAME}-{TAG}.fromfile.csv", 'r') as csvfile:
+            reader = csv.DictReader(csvfile)
+            for row in reader:
+                filename = row['genome_filename'] if moltype != "protein" else row['protein_filename']
+                if filename:
+                    fastas.append(filename)
+                else:
+                    acc = row['name'].split()[0] # get ident
+                    prodigal_filename = f"/group/ctbrowngrp/gtdb-fastas/genbank/prodigal/{acc}_protein.faa.gz"
+        return fastas
+
+    def __call__(self, w):
+        global checkpoints
+        # wait for the results of 'check_fromfile'; this will trigger an
+        # exception until that rule has been run.
+        checkpoints.check_fromfile.get(**w)
+        #expand the pattern
+        fastas = self.get_filenames(**w)
+
+        pattern = expand(self.pattern, fn =fastas,**w)
+        return pattern
+
+# build the full zip
+rule prepare:
+    input:
+        expand("gtdb-{tag}.protein.missing.csv", tag=TAG),
+        # this isn't right for this version -- don't use.
+        expand("gtdb-{tag}.protein.manifest.csv", tag=TAG),
+
+rule download_and_build:
+    input:
+        expand("gtdb-{tag}.protein.abund.zip", tag=TAG, k=KSIZES),
+        # expand("gtdb-{tag}-reps.protein.abund.zip", tag=TAG, k=KSIZES),
+
+rule check:
+    input:
+        expand("{name}-{tag}.protein.abund.zip.check", name=NAME, tag=TAG, k=KSIZES),
+        # expand("{name}-{tag}-reps.protein.abund.zip.check", name=NAME, tag=TAG, k=KSIZES),
+
+
+# check prior database -- only rebuild sigs that do not already exist.
+rule picklist_check:
+    input:
+        databases = DATABASES,
+        picklist = LINEAGES,
+    output:
+        missing = "gtdb-{tag}.protein.missing.csv",
+        manifest = "gtdb-{tag}.protein.manifest.csv",
+    log: f"{LOGS}/gtdb-{{tag}}.protein.picklist_check.log"
+    benchmark: f"{LOGS}/gtdb-{{tag}}.protein.picklist_check.benchmark"
+    threads: 1
+    resources:
+        mem_mb= lambda wildcards, attempt: attempt * 6000,
+        time= 240,
+        partition='high2',
+    shell:
+        """
+        sourmash sig check --picklist {input.picklist}:ident:ident \
+            {input.databases} --output-missing {output.missing} \
+            --save-manifest {output.manifest} 2> {log}
+        touch {output.missing}
+        """
+
+# ### Rules for GenBank GenBank Assemblies:
+# # download genbank genome details; make an info.csv file for entry.
+
+
+# rules for downloading and sketching proteomes/genomes-->proteomes
+# NOTE: this version only includes protein URL if it exists, so we can use this info to determine which files
+# we need to build from genomes (via prodigal).
+rule make_genome_info_csv:
+    output:
+        csvfile = '/group/ctbrowngrp/gtdb-fastas/genbank/info/{acc}.info.csv'
+    threads: 1
+    resources:
+        mem_mb=3000,
+        disk_mb=5000,
+        runtime=90,
+        time=60,
+        partition="low2",
+    # conda: "conf/env/biopython.yml"
+    shell:
+        """
+        python -Werror genbank_genomes.py {wildcards.acc} \
+            --output {output.csvfile}
+        """
+
+localrules: build_fromfile_from_assemblyinfo
+rule build_fromfile_from_assemblyinfo:
+    input: 
+        info=expand("/group/ctbrowngrp/gtdb-fastas/genbank/info/{acc}.info.csv", acc=ACCESSIONS)
+    output:
+        csv = f"{NAME}-{TAG}.fromfile.csv",
+    threads: 1
+    run:
+        with open(str(output.csv), "w") as outF:
+            header = ["name","genome_filename","protein_filename"]
+            outF.write(','.join(header) + '\n')
+            for inp in input:
+                with open(str(inp)) as csvfile:
+                    # csv has fields:  ["acc", "genome_url", "protein_url", "assembly_report_url", "ncbi_tax_name", "ncbi_taxid"]
+                    csv_reader = csv.DictReader(csvfile)
+                    rows = list(csv_reader)
+                    assert len(rows) == 1
+                    row = rows[0]
+                    acc = row['acc']
+                    name = acc + " " + row['ncbi_tax_name']
+                    if ',' in name:
+                        name = name.replace(',', ';')
+                    gf = f"/group/ctbrowngrp/gtdb-fastas/genbank/genomes/{acc}_genomic.fna.gz"
+                    pf= ""
+                    # if there's a protein download url, make sure we use that
+                    if row["protein_url"] != "":
+                        pf = f"/group/ctbrowngrp/gtdb-fastas/genbank/proteomes/{acc}_protein.faa.gz"
+                    # else, use prodigal to go nucl --> protein where we don't yet have protein fastas to download
+                    else:
+                        pf = f"/group/ctbrowngrp/gtdb-fastas/genbank/prodigal/{acc}_protein.faa.gz"
+                    outF.write(f"{name},{gf},{pf}\n")
+
+
+# Define the checkpoint function that allows us to read the fromfile.csv
+checkpoint check_fromfile:
+    input: f"{NAME}-{TAG}.fromfile.csv",
+    output: touch(".check_fromfile")
+
+# download proteome (when it exists)
+rule download_matching_proteome_wc:
+    input:
+        csvfile = ancient('/group/ctbrowngrp/gtdb-fastas/genbank/info/{acc}.info.csv')
+    output:
+        proteome = protected("/group/ctbrowngrp/gtdb-fastas/genbank/proteomes/{acc}_protein.faa.gz")
+    threads: 1
+    resources:
+         mem_mb=3000,
+         runtime=60,
+         time=90,
+         partition="low2", # bml
+    run:
+        with open(input.csvfile, 'rt') as infp:
+            r = csv.DictReader(infp)
+            rows = list(r)
+            assert len(rows) == 1
+            row = rows[0]
+            acc = row['acc']
+            assert wildcards.acc.startswith(acc)
+            url = row['protein_url']
+            name = row['ncbi_tax_name']
+
+            print(f"downloading proteome for acc {acc}/{name} from NCBI...",
+                file=sys.stderr)
+            with open(output.proteome, 'wb') as outfp:
+                #try:
+                with urllib.request.urlopen(url) as response:
+                    content = response.read()
+                    outfp.write(content)
+                    print(f"...wrote {len(content)} bytes to {output.proteome}",
+                          file=sys.stderr)
+
+
+# if proteome does not exist, download genome so we can translate
+rule download_matching_genome_wc:
+    input:
+        csvfile = ancient('/group/ctbrowngrp/gtdb-fastas/genbank/info/{acc}.info.csv')
+    output:
+        genome = protected("/group/ctbrowngrp/gtdb-fastas/genbank/genomes/{acc}_genomic.fna.gz")
+    threads: 1
+    resources:
+        mem_mb=3000,
+        disk_mb=5000,
+        runtime=60,
+        time=90,
+        partition="low2",
+    # conda: "conf/env/biopython.yml"
+    run:
+        with open(input.csvfile, 'rt') as infp:
+            r = csv.DictReader(infp)
+            rows = list(r)
+            assert len(rows) == 1
+            row = rows[0]
+            acc = row['acc']
+            assert wildcards.acc.startswith(acc)
+            url = row['genome_url']
+            name = row['ncbi_tax_name']
+
+            print(f"downloading genome for acc {acc}/{name} from NCBI...",
+                    file=sys.stderr)
+            with open(output.genome, 'wb') as outfp:
+                with urllib.request.urlopen(url) as response:
+                    content = response.read()
+                    outfp.write(content)
+                    print(f"...wrote {len(content)} bytes to {output.genome}",
+                           file=sys.stderr)
+
+
+
+rule unzip_genome_for_prodigal:
+    input:
+        fasta="/group/ctbrowngrp/gtdb-fastas/genbank/genomes/{acc}_genomic.fna.gz",
+    output:
+        unzipped=temp("/group/ctbrowngrp/gtdb-fastas/genbank/genomes/{acc}_genomic.fna"),
+    log: os.path.join(LOGS, "gzip", "{acc}.genome_unzip.log")
+    benchmark: os.path.join(LOGS, "gzip", "{acc}.genome_unzip.benchmark")
+    threads: 1
+    shell:
+        """
+        gunzip -c {input.fasta} > {output.unzipped} 2> {log}
+        """
+
+rule prodigal_genomes_for_failed_protein_downloads:
+    input: 
+        fasta="/group/ctbrowngrp/gtdb-fastas/genbank/genomes/{acc}_genomic.fna",
+    output:
+        proteins="/group/ctbrowngrp/gtdb-fastas/genbank/prodigal/{acc}_protein.faa",
+        genes="/group/ctbrowngrp/gtdb-fastas/genbank/prodigal/{acc}_genes.fna"
+    threads: 1
+    conda: "prodigal.yml"
+    log: os.path.join(LOGS, "prodigal", "{acc}.prodigal.log")
+    benchmark: os.path.join(LOGS, "prodigal", "{acc}.prodigal.benchmark")
+    shell:
+        """
+        prodigal -i {input.fasta} -a {output.proteins} -o {output.genes} 2> {log}
+        """
+
+rule gzip_prodigal_proteins:
+    input:
+        proteins="/group/ctbrowngrp/gtdb-fastas/genbank/prodigal/{acc}_protein.faa",
+    output:
+        "/group/ctbrowngrp/gtdb-fastas/genbank/prodigal/{acc}_protein.faa.gz"
+    threads: 1
+    log: os.path.join(LOGS, 'gzip_prodigal', '{acc}.gzip.log')
+    shell:
+        """
+        gzip -c {input} > {output} 2> {log}
+        """
+
+# todo: make param_str from config
+rule sketch_fromfile:
+    input: 
+        fromfile=f"{NAME}-{TAG}.fromfile.csv",
+        fastas=ancient(Checkpoint_MakePattern("{fn}")),
+    output: f"{NAME}-{TAG}.{{moltype}}.abund.zip"
+    threads: 1
+    resources:
+        mem_mb=6000,
+        runtime=4000,
+        time=4000,
+        partition="high2",
+    log:  os.path.join(LOGS, "sketch", f"{NAME}-{TAG}.{{moltype}}.log")
+    benchmark:  os.path.join(LOGS, "sketch", f"{NAME}-{TAG}.{{moltype}}.benchmark")
+    shell:
+        """
+        sourmash sketch fromfile {input.fromfile} -p protein,k=7,k=10,scaled=200,abund -o {output} --report-duplicated 2> {log}
+        """
+
+# rule build_abund_zip:
+#     input:
+#         databases = DATABASES,
+#         manifest = "gtdb-{tag}.manifest.csv",
+#     output:
+#         "gtdb-{tag}-k{k}.abund.zip"
+#     log: f"{LOGS}/gtdb-{{tag}}-k{{k}}.build_abund_zip.log"
+#     benchmark: f"{LOGS}/gtdb-{{tag}}-k{{k}}.build_abund_zip.benchmark"
+#     threads: 1
+#     resources:
+#         mem_mb= lambda wildcards, attempt: attempt * 10000,
+#         time= 6000,
+#         partition='bmh',
+#     shell:
+#         """
+#         sourmash sig cat {input.manifest} -k {wildcards.k} -o {output} 2> {log}
+#         """
+
+# rule extract_representatives_zip:
+#     input:
+#         abund_zip = "gtdb-{tag}-k{k}.abund.zip",
+#         reps_picklist = REPS_TAXONOMY_FILE ,
+#     output:
+#         "gtdb-{tag}-reps.k{k}.abund.zip"
+#     log: f"{LOGS}/gtdb-{{tag}}-k{{k}}.extract_reps_zip.log"
+#     benchmark: f"{LOGS}/gtdb-{{tag}}-k{{k}}.extract_reps_zip.benchmark"
+#     threads: 1
+#     resources:
+#         mem_mb= lambda wildcards, attempt: attempt * 3000,
+#         time= 6000,
+#         partition='high2',
+#     shell:
+#         """
+#         sourmash sig extract {input.abund_zip} --picklist {input.reps_picklist}:ident:ident -k {wildcards.k} -o {output} 2> {log}
+#         """
+
+# rule picklist_confirm:
+#     input:
+#         picklist = TAXONOMY_FILE, 
+#         zip = "gtdb-{tag}-k{k}.abund.zip",
+#     output:
+#         confirm = touch("gtdb-{tag}-k{k}.abund.zip.check")
+#     log: f"{LOGS}/gtdb-{{tag}}-k{{k}}.abund.picklist_confirm.log"
+#     benchmark: f"{LOGS}/gtdb-{{tag}}-k{{k}}.abund.picklist_confirm.benchmark"
+#     threads: 1
+#     resources:
+#         mem_mb= lambda wildcards, attempt: attempt * 3000,
+#         time=6000,
+#         partition='high2',
+#     shell:
+#         """
+#         sourmash sig check --picklist {input.picklist}:ident:ident \
+#             {input.zip} --fail 2> {log}
+#         """
+
+# rule picklist_confirm_reps:
+#     input:
+#         picklist = REPS_TAXONOMY_FILE, 
+#         zip = "gtdb-{tag}-reps.k{k}.abund.zip",
+#     output:
+#         confirm = touch("gtdb-{tag}-reps.k{k}.abund.zip.check")
+#     log: f"{LOGS}/gtdb-{{tag}}-k{{k}}.reps.picklist_confirm.log"
+#     benchmark: f"{LOGS}/gtdb-{{tag}}-k{{k}}.reps.picklist_confirm.benchmark"
+#     threads: 1
+#     resources:
+#         mem_mb= lambda wildcards, attempt: attempt * 3000,
+#         time= 600,
+#         partition='high2',
+#     shell:
+#         """
+#         sourmash sig check --picklist {input.picklist}:ident:ident \
+#             {input.zip} --fail 2> {log}
+#         """
+

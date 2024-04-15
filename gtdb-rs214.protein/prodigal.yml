@@ -1,0 +1,12 @@
+name: prodigal
+channels:
+  - conda-forge
+  - bioconda
+  - defaults
+dependencies:
+  - prodigal=2.6.3
+  # github version apparently supports gzipped input fastas, see https://github.com/hyattpd/Prodigal/issues/72
+    # BUT, I couldn't get this to work
+  #- pip
+  #- pip:
+    #- git+https://github.com/hyattpd/Prodigal@GoogleImport

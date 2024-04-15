@@ -1,0 +1,14 @@
+release_dir: "/group/ctbrowngrp/sourmash-db" # db's will be built in {release_dir}/{name}-{tag} folder
+name: gtdb
+tag: rs214
+ksizes:
+- 7
+- 10
+scaled: 200
+# prior_release_database_fromfile: "/group/ctbrowngrp/sourmash-db/gtdb-rs207/gtdb-rs207.fromfile.csv"
+prior_releases:
+- "/group/ctbrowngrp/sourmash-db/gtdb-rs207/gtdb-rs207.protein.k7.zip"
+- "/group/ctbrowngrp/sourmash-db/gtdb-rs207/gtdb-rs207.protein.k10.zip" 
+# lineages files are generated during the gtdb-rs214.genomic workflow
+lineages: "/group/ctbrowngrp/sourmash-db/gtdb-rs214/gtdb-rs214.lineages.csv"
+reps_lineages: "/group/ctbrowngrp/sourmash-db/gtdb-rs214/gtdb-rs214.lineages.reps.csv"
