@@ -37,7 +37,14 @@ LOGS='logs'
 
 ACCESSIONS = []
 
-with open(LINEAGES, 'r') as inF:
+# to build FULL zip, do this
+# with open(LINEAGES, 'r') as inF:
+#     reader = csv.DictReader(inF)
+#     for row in reader:
+#         ACCESSIONS.append(row['ident'])
+
+# hacky -- build diff zip first, then go back and do rest above.
+with open(f"{NAME}-{TAG}.protein.missing.csv", 'r') as inF:
     reader = csv.DictReader(inF)
     for row in reader:
         ACCESSIONS.append(row['ident'])
@@ -65,6 +72,7 @@ class Checkpoint_MakePattern:
                     fastas.append(filename)
                 else:
                     acc = row['name'].split()[0] # get ident
+                    # actually, this should already be in there...
                     prodigal_filename = f"/group/ctbrowngrp/gtdb-fastas/genbank/prodigal/{acc}_protein.faa.gz"
         return fastas
 
@@ -82,13 +90,13 @@ class Checkpoint_MakePattern:
 # build the full zip
 rule prepare:
     input:
-        expand("gtdb-{tag}.protein.missing.csv", tag=TAG),
-        # this isn't right for this version -- don't use.
-        expand("gtdb-{tag}.protein.manifest.csv", tag=TAG),
+        expand("{name}-{tag}.protein.missing.csv", name=NAME, tag=TAG),
+        # this manifest isn't right -- too many entries! Don't use.
+        # expand("{name}-{tag}.protein.manifest.csv", name=NAME, tag=TAG),
 
 rule download_and_build:
     input:
-        expand("gtdb-{tag}.protein.abund.zip", tag=TAG, k=KSIZES),
+        expand("{name}-{tag}.protein.abund.zip", name=NAME, tag=TAG, k=KSIZES),
         # expand("gtdb-{tag}-reps.protein.abund.zip", tag=TAG, k=KSIZES),
 
 rule check:
@@ -103,10 +111,10 @@ rule picklist_check:
         databases = DATABASES,
         picklist = LINEAGES,
     output:
-        missing = "gtdb-{tag}.protein.missing.csv",
-        manifest = "gtdb-{tag}.protein.manifest.csv",
-    log: f"{LOGS}/gtdb-{{tag}}.protein.picklist_check.log"
-    benchmark: f"{LOGS}/gtdb-{{tag}}.protein.picklist_check.benchmark"
+        missing = "{name}-{tag}.protein.missing.csv",
+        manifest = "{name}-{tag}.protein.manifest.csv",
+    log: f"{LOGS}/{{name}}-{{tag}}.protein.picklist_check.log"
+    benchmark: f"{LOGS}/{{name}}-{{tag}}.protein.picklist_check.benchmark"
     threads: 1
     resources:
         mem_mb= lambda wildcards, attempt: attempt * 6000,
@@ -144,7 +152,6 @@ rule make_genome_info_csv:
             --output {output.csvfile}
         """
 
-localrules: build_fromfile_from_assemblyinfo
 rule build_fromfile_from_assemblyinfo:
     input: 
         info=expand("/group/ctbrowngrp/gtdb-fastas/genbank/info/{acc}.info.csv", acc=ACCESSIONS)
