@@ -57,44 +57,18 @@ wildcard_constraints:
     # tag = "[^/\.]+",
     filename = "[^/]+"
 
-class Checkpoint_MakePattern:
-    def __init__(self, pattern):
-        self.pattern = pattern
-    
-    # get protein fasta filenames from the fromfile.csv
-    def get_filenames(self, basename=None, moltype=None):
-        fastas = []
-        with open(f"{NAME}-{TAG}.fromfile.csv", 'r') as csvfile:
-            reader = csv.DictReader(csvfile)
-            for row in reader:
-                filename = row['genome_filename'] if moltype != "protein" else row['protein_filename']
-                if filename:
-                    fastas.append(filename)
-                else:
-                    acc = row['name'].split()[0] # get ident
-                    # actually, this should already be in there...
-                    prodigal_filename = f"/group/ctbrowngrp/gtdb-fastas/genbank/prodigal/{acc}_protein.faa.gz"
-        return fastas
-
-    def __call__(self, w):
-        global checkpoints
-        # wait for the results of 'check_fromfile'; this will trigger an
-        # exception until that rule has been run.
-        checkpoints.check_fromfile.get(**w)
-        #expand the pattern
-        fastas = self.get_filenames(**w)
-
-        pattern = expand(self.pattern, fn =fastas,**w)
-        return pattern
-
 # build the full zip
 rule prepare:
     input:
         expand("{name}-{tag}.protein.missing.csv", name=NAME, tag=TAG),
-        # this manifest isn't right -- too many entries! Don't use.
-        # expand("{name}-{tag}.protein.manifest.csv", name=NAME, tag=TAG),
 
-rule download_and_build:
+rule download:
+    input:
+        expand("{name}-{tag}.protein.missing.zip", name=NAME, tag=TAG),
+        expand("{name}-{tag}.protein-download.failures.csv", name=NAME, tag=TAG),
+        expand("{name}-{tag}.genome-download.failures.csv", name=NAME, tag=TAG),
+
+rule build:
     input:
         expand("{name}-{tag}.protein.abund.zip", name=NAME, tag=TAG, k=KSIZES),
         # expand("gtdb-{tag}-reps.protein.abund.zip", tag=TAG, k=KSIZES),
@@ -112,7 +86,6 @@ rule picklist_check:
         picklist = LINEAGES,
     output:
         missing = "{name}-{tag}.protein.missing.csv",
-        manifest = "{name}-{tag}.protein.manifest.csv",
     log: f"{LOGS}/{{name}}-{{tag}}.protein.picklist_check.log"
     benchmark: f"{LOGS}/{{name}}-{{tag}}.protein.picklist_check.benchmark"
     threads: 1
@@ -123,142 +96,58 @@ rule picklist_check:
     shell:
         """
         sourmash sig check --picklist {input.picklist}:ident:ident \
-            {input.databases} --output-missing {output.missing} \
-            --save-manifest {output.manifest} 2> {log}
+            {input.databases} --output-missing {output.missing} 2 > {log}
         touch {output.missing}
         """
 
-# ### Rules for GenBank GenBank Assemblies:
-# # download genbank genome details; make an info.csv file for entry.
-
-
-# rules for downloading and sketching proteomes/genomes-->proteomes
-# NOTE: this version only includes protein URL if it exists, so we can use this info to determine which files
-# we need to build from genomes (via prodigal).
-rule make_genome_info_csv:
+rule download_and_sketch_missing:
+    input:
+        missing = "{name}-{tag}.protein.missing.csv",
     output:
-        csvfile = '/group/ctbrowngrp/gtdb-fastas/genbank/info/{acc}.info.csv'
+        zip = "{name}-{tag}.protein.missing.zip",
+        failed = "{name}-{tag}.protein-download.failures.csv"
+    log: f"{LOGS}/{{name}}-{{tag}}.protein.download_and_sketch_missing.log"
+    benchmark: f"{LOGS}/{{name}}-{{tag}}.protein.download_and_sketch_missing.benchmark"
     threads: 1
     resources:
-        mem_mb=3000,
-        disk_mb=5000,
-        runtime=90,
-        time=60,
-        partition="low2",
-    # conda: "conf/env/biopython.yml"
+        mem_mb= lambda wildcards, attempt: attempt * 6000,
+        time= 240,
+        partition='high2',
+    conda: "directsketch"
     shell:
         """
-        python -Werror genbank_genomes.py {wildcards.acc} \
-            --output {output.csvfile}
+        sourmash scripts gbsketch {input.missing} -o {output.zip} --failed {output.failed} \
+                --param-str "protein,k=7,k=10,scaled=200" --proteomes-only -r 1 2> {log}
         """
 
-rule build_fromfile_from_assemblyinfo:
-    input: 
-        info=expand("/group/ctbrowngrp/gtdb-fastas/genbank/info/{acc}.info.csv", acc=ACCESSIONS)
-    output:
-        csv = f"{NAME}-{TAG}.fromfile.csv",
-    threads: 1
-    run:
-        with open(str(output.csv), "w") as outF:
-            header = ["name","genome_filename","protein_filename"]
-            outF.write(','.join(header) + '\n')
-            for inp in input:
-                with open(str(inp)) as csvfile:
-                    # csv has fields:  ["acc", "genome_url", "protein_url", "assembly_report_url", "ncbi_tax_name", "ncbi_taxid"]
-                    csv_reader = csv.DictReader(csvfile)
-                    rows = list(csv_reader)
-                    assert len(rows) == 1
-                    row = rows[0]
-                    acc = row['acc']
-                    name = acc + " " + row['ncbi_tax_name']
-                    if ',' in name:
-                        name = name.replace(',', ';')
-                    gf = f"/group/ctbrowngrp/gtdb-fastas/genbank/genomes/{acc}_genomic.fna.gz"
-                    pf= ""
-                    # if there's a protein download url, make sure we use that
-                    if row["protein_url"] != "":
-                        pf = f"/group/ctbrowngrp/gtdb-fastas/genbank/proteomes/{acc}_protein.faa.gz"
-                    # else, use prodigal to go nucl --> protein where we don't yet have protein fastas to download
-                    else:
-                        pf = f"/group/ctbrowngrp/gtdb-fastas/genbank/prodigal/{acc}_protein.faa.gz"
-                    outF.write(f"{name},{gf},{pf}\n")
-
-
-# Define the checkpoint function that allows us to read the fromfile.csv
-checkpoint check_fromfile:
-    input: f"{NAME}-{TAG}.fromfile.csv",
-    output: touch(".check_fromfile")
-
-# download proteome (when it exists)
-rule download_matching_proteome_wc:
+rule download_genomes_for_failed_protein_downloads:
     input:
-        csvfile = ancient('/group/ctbrowngrp/gtdb-fastas/genbank/info/{acc}.info.csv')
+        failed_proteomes = "{name}-{tag}.protein-download.failures.csv"
     output:
-        proteome = protected("/group/ctbrowngrp/gtdb-fastas/genbank/proteomes/{acc}_protein.faa.gz")
+        failed = "{name}-{tag}.genome-download.failures.csv"
+    log: f"{LOGS}/{{name}}-{{tag}}.protein.download_and_sketch_missing.log"
+    benchmark: f"{LOGS}/{{name}}-{{tag}}.protein.download_and_sketch_missing.benchmark"
     threads: 1
     resources:
-         mem_mb=3000,
-         runtime=60,
-         time=90,
-         partition="low2", # bml
-    run:
-        with open(input.csvfile, 'rt') as infp:
-            r = csv.DictReader(infp)
-            rows = list(r)
-            assert len(rows) == 1
-            row = rows[0]
-            acc = row['acc']
-            assert wildcards.acc.startswith(acc)
-            url = row['protein_url']
-            name = row['ncbi_tax_name']
+        mem_mb= lambda wildcards, attempt: attempt * 6000,
+        time= 240,
+        partition='high2',
+    params:
+        fasta_dir = "/group/ctbrowngrp/gtdb-fastas/genbank/genomes/",
+        zip = "{name}-{tag}.genome-download.failures.zip",
+    conda: "directsketch"
+    shell:
+        """
+        sourmash scripts gbsketch {input.failed_proteomes} -o {params.zip} --failed {output.failed} \
+                --param-str "protein,k=7,k=10,scaled=200" --genomes-only --download-only -r 1 2> {log}
+        # zip not actually built here
+        rm -rf {params.zip}
+        """
 
-            print(f"downloading proteome for acc {acc}/{name} from NCBI...",
-                file=sys.stderr)
-            with open(output.proteome, 'wb') as outfp:
-                #try:
-                with urllib.request.urlopen(url) as response:
-                    content = response.read()
-                    outfp.write(content)
-                    print(f"...wrote {len(content)} bytes to {output.proteome}",
-                          file=sys.stderr)
+# maybe checkpoint on failures csv so we know which genomes to download
 
 
-# if proteome does not exist, download genome so we can translate
-rule download_matching_genome_wc:
-    input:
-        csvfile = ancient('/group/ctbrowngrp/gtdb-fastas/genbank/info/{acc}.info.csv')
-    output:
-        genome = protected("/group/ctbrowngrp/gtdb-fastas/genbank/genomes/{acc}_genomic.fna.gz")
-    threads: 1
-    resources:
-        mem_mb=3000,
-        disk_mb=5000,
-        runtime=60,
-        time=90,
-        partition="low2",
-    # conda: "conf/env/biopython.yml"
-    run:
-        with open(input.csvfile, 'rt') as infp:
-            r = csv.DictReader(infp)
-            rows = list(r)
-            assert len(rows) == 1
-            row = rows[0]
-            acc = row['acc']
-            assert wildcards.acc.startswith(acc)
-            url = row['genome_url']
-            name = row['ncbi_tax_name']
-
-            print(f"downloading genome for acc {acc}/{name} from NCBI...",
-                    file=sys.stderr)
-            with open(output.genome, 'wb') as outfp:
-                with urllib.request.urlopen(url) as response:
-                    content = response.read()
-                    outfp.write(content)
-                    print(f"...wrote {len(content)} bytes to {output.genome}",
-                           file=sys.stderr)
-
-
-
+# prodigal genomes if need be
 rule unzip_genome_for_prodigal:
     input:
         fasta="/group/ctbrowngrp/gtdb-fastas/genbank/genomes/{acc}_genomic.fna.gz",
@@ -299,24 +188,24 @@ rule gzip_prodigal_proteins:
         gzip -c {input} > {output} 2> {log}
         """
 
-# todo: make param_str from config
-rule sketch_fromfile:
-    input: 
-        fromfile=f"{NAME}-{TAG}.fromfile.csv",
-        fastas=ancient(Checkpoint_MakePattern("{fn}")),
-    output: f"{NAME}-{TAG}.{{moltype}}.abund.zip"
-    threads: 1
-    resources:
-        mem_mb=6000,
-        runtime=4000,
-        time=4000,
-        partition="high2",
-    log:  os.path.join(LOGS, "sketch", f"{NAME}-{TAG}.{{moltype}}.log")
-    benchmark:  os.path.join(LOGS, "sketch", f"{NAME}-{TAG}.{{moltype}}.benchmark")
-    shell:
-        """
-        sourmash sketch fromfile {input.fromfile} -p protein,k=7,k=10,scaled=200,abund -o {output} --report-duplicated 2> {log}
-        """
+# # todo: make param_str from config
+# rule sketch_new_proteomes:
+#     input: 
+#         fromfile=f"{NAME}-{TAG}.fromfile.csv",
+#         fastas=ancient(Checkpoint_MakePattern("{fn}")),
+#     output: f"{NAME}-{TAG}.{{moltype}}.abund.zip"
+#     threads: 1
+#     resources:
+#         mem_mb=6000,
+#         runtime=4000,
+#         time=4000,
+#         partition="high2",
+#     log:  os.path.join(LOGS, "sketch", f"{NAME}-{TAG}.{{moltype}}.log")
+#     benchmark:  os.path.join(LOGS, "sketch", f"{NAME}-{TAG}.{{moltype}}.benchmark")
+#     shell:
+#         """
+#         sourmash sketch fromfile {input.fromfile} -p protein,k=7,k=10,scaled=200,abund -o {output} --report-duplicated 2> {log}
+#         """
 
 # rule build_abund_zip:
 #     input:
