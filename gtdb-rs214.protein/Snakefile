@@ -100,9 +100,32 @@ rule picklist_check:
         touch {output.missing}
         """
 
+# need to build a file with accession,name as the first two columns. CURRENTLY DO NOT HAVE NAME
+rule build_downloadfile_from_missing:
+    input: 
+        missing = "{name}-{tag}.protein.missing.csv",
+        lineages = LINEAGES,
+    output:
+        csv = "{name}-{tag}.protein.downloadfile.csv",
+    threads: 1
+    run:
+        with open(str(output.csv), "w") as outF:
+            header = ["accession","name"]
+            outF.write(','.join(header) + '\n')
+            with open(str(input.missing)) as csvfile:
+                with open(str(input.lineages)) as lineages:
+                    missing_reader = csv.DictReader(csvfile)
+                    lineages_reader = csv.DictReader(lineages)
+                    lineages_dict = {row['ident']: row['ident'] + ' ' + row['species'] for row in lineages_reader}
+                    for row in missing_reader:
+                        acc = row['ident']
+                        name = lineages_dict[acc]
+                        outF.write(f"{acc},{name}\n")
+
+
 rule download_and_sketch_missing:
     input:
-        missing = "{name}-{tag}.protein.missing.csv",
+        missing = "{name}-{tag}.protein.downloadfile.csv",
     output:
         zip = "{name}-{tag}.protein.missing.zip",
         failed = "{name}-{tag}.protein-download.failures.csv"
@@ -117,7 +140,7 @@ rule download_and_sketch_missing:
     shell:
         """
         sourmash scripts gbsketch {input.missing} -o {output.zip} --failed {output.failed} \
-                --param-str "protein,k=7,k=10,scaled=200" --proteomes-only -r 1 2> {log}
+                --param-str "protein,k=7,k=10,scaled=200,abund" --proteomes-only -r 1 2> {log}
         """
 
 rule download_genomes_for_failed_protein_downloads:
@@ -148,45 +171,45 @@ rule download_genomes_for_failed_protein_downloads:
 
 
 # prodigal genomes if need be
-rule unzip_genome_for_prodigal:
-    input:
-        fasta="/group/ctbrowngrp/gtdb-fastas/genbank/genomes/{acc}_genomic.fna.gz",
-    output:
-        unzipped=temp("/group/ctbrowngrp/gtdb-fastas/genbank/genomes/{acc}_genomic.fna"),
-    log: os.path.join(LOGS, "gzip", "{acc}.genome_unzip.log")
-    benchmark: os.path.join(LOGS, "gzip", "{acc}.genome_unzip.benchmark")
-    threads: 1
-    shell:
-        """
-        gunzip -c {input.fasta} > {output.unzipped} 2> {log}
-        """
+# rule unzip_genome_for_prodigal:
+#     input:
+#         fasta="/group/ctbrowngrp/gtdb-fastas/genbank/genomes/{acc}_genomic.fna.gz",
+#     output:
+#         unzipped=temp("/group/ctbrowngrp/gtdb-fastas/genbank/genomes/{acc}_genomic.fna"),
+#     log: os.path.join(LOGS, "gzip", "{acc}.genome_unzip.log")
+#     benchmark: os.path.join(LOGS, "gzip", "{acc}.genome_unzip.benchmark")
+#     threads: 1
+#     shell:
+#         """
+#         gunzip -c {input.fasta} > {output.unzipped} 2> {log}
+#         """
 
-rule prodigal_genomes_for_failed_protein_downloads:
-    input: 
-        fasta="/group/ctbrowngrp/gtdb-fastas/genbank/genomes/{acc}_genomic.fna",
-    output:
-        proteins="/group/ctbrowngrp/gtdb-fastas/genbank/prodigal/{acc}_protein.faa",
-        genes="/group/ctbrowngrp/gtdb-fastas/genbank/prodigal/{acc}_genes.fna"
-    threads: 1
-    conda: "prodigal.yml"
-    log: os.path.join(LOGS, "prodigal", "{acc}.prodigal.log")
-    benchmark: os.path.join(LOGS, "prodigal", "{acc}.prodigal.benchmark")
-    shell:
-        """
-        prodigal -i {input.fasta} -a {output.proteins} -o {output.genes} 2> {log}
-        """
+# rule prodigal_genomes_for_failed_protein_downloads:
+#     input: 
+#         fasta="/group/ctbrowngrp/gtdb-fastas/genbank/genomes/{acc}_genomic.fna",
+#     output:
+#         proteins="/group/ctbrowngrp/gtdb-fastas/genbank/prodigal/{acc}_protein.faa",
+#         genes="/group/ctbrowngrp/gtdb-fastas/genbank/prodigal/{acc}_genes.fna"
+#     threads: 1
+#     conda: "prodigal.yml"
+#     log: os.path.join(LOGS, "prodigal", "{acc}.prodigal.log")
+#     benchmark: os.path.join(LOGS, "prodigal", "{acc}.prodigal.benchmark")
+#     shell:
+#         """
+#         prodigal -i {input.fasta} -a {output.proteins} -o {output.genes} 2> {log}
+#         """
 
-rule gzip_prodigal_proteins:
-    input:
-        proteins="/group/ctbrowngrp/gtdb-fastas/genbank/prodigal/{acc}_protein.faa",
-    output:
-        "/group/ctbrowngrp/gtdb-fastas/genbank/prodigal/{acc}_protein.faa.gz"
-    threads: 1
-    log: os.path.join(LOGS, 'gzip_prodigal', '{acc}.gzip.log')
-    shell:
-        """
-        gzip -c {input} > {output} 2> {log}
-        """
+# rule gzip_prodigal_proteins:
+#     input:
+#         proteins="/group/ctbrowngrp/gtdb-fastas/genbank/prodigal/{acc}_protein.faa",
+#     output:
+#         "/group/ctbrowngrp/gtdb-fastas/genbank/prodigal/{acc}_protein.faa.gz"
+#     threads: 1
+#     log: os.path.join(LOGS, 'gzip_prodigal', '{acc}.gzip.log')
+#     shell:
+#         """
+#         gzip -c {input} > {output} 2> {log}
+#         """
 
 # # todo: make param_str from config
 # rule sketch_new_proteomes:
