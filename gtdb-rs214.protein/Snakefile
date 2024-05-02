@@ -106,12 +106,12 @@ rule download_and_build:
         expand("{name}-{tag}.protein-download.failures.csv", name=NAME, tag=TAG),
         expand("{name}-{tag}.genome-download.failures.csv", name=NAME, tag=TAG),
         expand("{name}-{tag}.prodigal.abund.zip", name=NAME, tag=TAG),
-        expand("{name}-{tag}-k{k}.abund.zip", name=NAME, tag=TAG, k=KSIZES),
+        expand("{name}-{tag}-k{k}.protein.abund.zip", name=NAME, tag=TAG, k=KSIZES),
 
-rule build:
-    input:
-        expand("{name}-{tag}.protein.abund.zip", name=NAME, tag=TAG, k=KSIZES),
-        # expand("gtdb-{tag}-reps.protein.abund.zip", tag=TAG, k=KSIZES),
+# rule build:
+#     input:
+#         expand("{name}-{tag}.protein.abund.zip", name=NAME, tag=TAG, k=KSIZES),
+#         # expand("gtdb-{tag}-reps.protein.abund.zip", tag=TAG, k=KSIZES),
 
 rule check:
     input:
@@ -308,10 +308,10 @@ rule sketch_prodigal_proteomes:
 rule cat_full_zip:
     input:
         prior_release = DATABASES,
-        dl_proteomes = "{{name}}-{tag}.protein.abund.zip",
-        prodigal_proteomes = "{{name}}-{tag}.prodigal.abund.zip",
+        dl_proteomes = "{name}-{tag}.protein.missing.zip",
+        prodigal_proteomes = "{name}-{tag}.prodigal.abund.zip",
     output:
-        "{name}-{tag}-k{k}.abund.zip"
+        "{name}-{tag}-k{k}.protein.abund.zip"
     log: f"{LOGS}/{{name}}-{{tag}}-k{{k}}.cat_abund_zip.log"
     benchmark: f"{LOGS}/{{name}}-{{tag}}-k{{k}}.cat_abund_zip.benchmark"
     threads: 1
