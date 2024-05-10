@@ -30,32 +30,27 @@ LINEAGES = config['lineages']
 REPS_LINEAGES = config['reps_lineages']
 
 wildcard_constraints:
+    name = "[^/]+",
     filename = "[^/]+"
 
 # logs dir
 LOGS='logs'
 
-ACCESSIONS = []
-
 # to build FULL zip, do this
-# with open(LINEAGES, 'r') as inF:
-#     reader = csv.DictReader(inF)
-#     for row in reader:
-#         ACCESSIONS.append(row['ident'])
-
-# hacky -- build diff zip first, then go back and do rest above.
-with open(f"{NAME}-{TAG}.protein.missing.csv", 'r') as inF:
+ACCESSIONS = []
+with open(LINEAGES, 'r') as inF:
     reader = csv.DictReader(inF)
     for row in reader:
         ACCESSIONS.append(row['ident'])
 
+# hacky -- build diff zip first, then go back and do rest above.
+# with open(f"{NAME}-{TAG}.protein.missing.csv", 'r') as inF:
+#     reader = csv.DictReader(inF)
+#     for row in reader:
+#         ACCESSIONS.append(row['ident'])
+
 ########################################
 
-wildcard_constraints:
-    # ksize = "\d+",
-    name = "[^/]+",
-    # tag = "[^/\.]+",
-    filename = "[^/]+"
 
 class Checkpoint_MakePattern:
     def __init__(self, pattern):
@@ -171,16 +166,17 @@ rule download_and_sketch_missing:
         failed = "{name}-{tag}.protein-download.failures.csv"
     log: f"{LOGS}/{{name}}-{{tag}}.protein.download_and_sketch_missing.log"
     benchmark: f"{LOGS}/{{name}}-{{tag}}.protein.download_and_sketch_missing.benchmark"
-    threads: 1
+    threads: 3
     resources:
         mem_mb= lambda wildcards, attempt: attempt * 6000,
         time= 240,
         partition='high2',
-    conda: "directsketch"
+    conda: "ds.yml"
     shell:
         """
-        sourmash scripts gbsketch {input.missing} -o {output.zip} --failed {output.failed} \
-                --param-str "protein,k=7,k=10,scaled=200,abund" --proteomes-only -r 1 2> {log}
+        /usr/bin/time -v sourmash scripts gbsketch {input.missing} -o {output.zip} \
+                --failed {output.failed} -c {threads} --proteomes-only -r 1 \
+                --param-str "protein,k=7,k=10,scaled=200,abund"  2> {log}
         """
 
 rule download_genomes_for_failed_protein_downloads:
@@ -198,12 +194,13 @@ rule download_genomes_for_failed_protein_downloads:
     params:
         fasta_dir = "/group/ctbrowngrp/gtdb-fastas/genbank/genomes/",
         zip = "{name}-{tag}.genome-download.failures.zip",
-    conda: "directsketch"
+    threads: 3
+    conda: "ds.yml"
     shell:
         """
         sourmash scripts gbsketch {input.failed_proteomes} -o {params.zip} --failed {output.failed} \
                 --param-str "protein,k=7,k=10,scaled=200" --genomes-only --download-only --keep-fastas \
-                --fastas {params.fasta_dir} -r 1 2> {log}
+                --fastas {params.fasta_dir} -r 1 -c {threads} 2> {log}
         # zip not actually built here
         rm -rf {params.zip}
         """
@@ -217,47 +214,21 @@ checkpoint check_downloads:
 
 
 # prodigal genomes as needed
-rule unzip_genome_for_prodigal:
+rule prodigal_genomes_for_failed_protein_downloads:
     input:
         fasta="/group/ctbrowngrp/gtdb-fastas/genbank/genomes/{acc}_genomic.fna.gz",
     output:
-        unzipped=temp("/group/ctbrowngrp/gtdb-fastas/genbank/genomes/{acc}_genomic.fna"),
-    log: os.path.join(LOGS, "gzip", "{acc}.genome_unzip.log")
-    benchmark: os.path.join(LOGS, "gzip", "{acc}.genome_unzip.benchmark")
-    threads: 1
-    shell:
-        """
-        gunzip -c {input.fasta} > {output.unzipped} 2> {log}
-        """
-
-rule prodigal_genomes_for_failed_protein_downloads:
-    input:
-        fasta="/group/ctbrowngrp/gtdb-fastas/genbank/genomes/{acc}_genomic.fna",
-    output:
-        proteins="/group/ctbrowngrp/gtdb-fastas/genbank/prodigal/{acc}_protein.faa",
-        genes="/group/ctbrowngrp/gtdb-fastas/genbank/prodigal/{acc}_genes.fna"
+        proteins="/group/ctbrowngrp/gtdb-fastas/genbank/prodigal/{acc}_protein.faa.gz",
     threads: 1
     conda: "prodigal.yml"
     log: os.path.join(LOGS, "prodigal", "{acc}.prodigal.log")
     benchmark: os.path.join(LOGS, "prodigal", "{acc}.prodigal.benchmark")
     shell:
         """
-        prodigal -i {input.fasta} -a {output.proteins} -o {output.genes} 2> {log}
+        gunzip -c {input.fasta} | prodigal -a /dev/stdout | gzip > {output.proteins} 2> {log}
         """
 
-rule gzip_prodigal_proteins:
-    input:
-        proteins="/group/ctbrowngrp/gtdb-fastas/genbank/prodigal/{acc}_protein.faa",
-    output:
-        "/group/ctbrowngrp/gtdb-fastas/genbank/prodigal/{acc}_protein.faa.gz"
-    threads: 1
-    log: os.path.join(LOGS, 'gzip_prodigal', '{acc}.gzip.log')
-    shell:
-        """
-        gzip -c {input} > {output} 2> {log}
-        """
-
-# collect info about new prodigal proteomes
+# build fromfile from prodigal proteomes for sketching
 rule build_prodigal_fromfile:
     input:
         prot_fail="{name}-{tag}.protein-download.failures.csv",
@@ -270,12 +241,12 @@ rule build_prodigal_fromfile:
         with open(output.fromfile, 'a') as outF:
             header = ["name","genome_filename","protein_filename"]
             outF.write(','.join(header) + '\n')
-            with open(genome_fail, 'r') as csvfile:
+            with open(input.genome_fail, 'r') as csvfile:
                 reader = csv.DictReader(csvfile)
                 for row in reader:
                     acc = row['accession']
                     supressed.add(acc)
-            with open(prot_fail, 'r') as csvfile:
+            with open(input.prot_fail, 'r') as csvfile:
                 reader = csv.DictReader(csvfile)
                 for row in reader:
                     acc = row['accession']
