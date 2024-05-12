@@ -220,12 +220,15 @@ rule prodigal_genomes_for_failed_protein_downloads:
     output:
         proteins="/group/ctbrowngrp/gtdb-fastas/genbank/prodigal/{acc}_protein.faa.gz",
     threads: 1
+    params:
+        tmp_prot="/group/ctbrowngrp/gtdb-fastas/genbank/prodigal/{acc}_protein.faa",
     conda: "prodigal.yml"
     log: os.path.join(LOGS, "prodigal", "{acc}.prodigal.log")
     benchmark: os.path.join(LOGS, "prodigal", "{acc}.prodigal.benchmark")
     shell:
         """
-        gunzip -c {input.fasta} | prodigal -a /dev/stdout | gzip > {output.proteins} 2> {log}
+        gunzip -c {input.fasta} | prodigal -q -a {params.tmp_prot} 2> {log}
+        gzip {params.tmp_prot}
         """
 
 # build fromfile from prodigal proteomes for sketching
