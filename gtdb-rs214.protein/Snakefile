@@ -36,21 +36,11 @@ wildcard_constraints:
 # logs dir
 LOGS='logs'
 
-# to build FULL zip, do this
 ACCESSIONS = []
 with open(LINEAGES, 'r') as inF:
     reader = csv.DictReader(inF)
     for row in reader:
         ACCESSIONS.append(row['ident'])
-
-# hacky -- build diff zip first, then go back and do rest above.
-# with open(f"{NAME}-{TAG}.protein.missing.csv", 'r') as inF:
-#     reader = csv.DictReader(inF)
-#     for row in reader:
-#         ACCESSIONS.append(row['ident'])
-
-########################################
-
 
 class Checkpoint_MakePattern:
     def __init__(self, pattern):
@@ -103,15 +93,15 @@ rule download_and_build:
         expand("{name}-{tag}.prodigal.abund.zip", name=NAME, tag=TAG),
         expand("{name}-{tag}-k{k}.protein.abund.zip", name=NAME, tag=TAG, k=KSIZES),
 
-# rule build:
-#     input:
-#         expand("{name}-{tag}.protein.abund.zip", name=NAME, tag=TAG, k=KSIZES),
-#         # expand("gtdb-{tag}-reps.protein.abund.zip", tag=TAG, k=KSIZES),
-
-rule check:
+rule confirm:
     input:
-        expand("{name}-{tag}.protein.abund.zip.check", name=NAME, tag=TAG, k=KSIZES),
-        # expand("{name}-{tag}-reps.protein.abund.zip.check", name=NAME, tag=TAG, k=KSIZES),
+        expand("{name}-{tag}-k{k}.protein.still-missing.csv", name=NAME, tag=TAG, k=KSIZES),
+
+rule release:
+    input:
+        expand("{name}-{tag}-k{k}.protein.zip", name=NAME, tag=TAG, k=KSIZES),
+        expand("{name}-{tag}-reps-k{k}.protein.zip", name=NAME, tag=TAG, k=KSIZES),
+
 
 
 # check prior database -- only rebuild sigs that do not already exist.
@@ -145,7 +135,7 @@ rule build_downloadfile_from_missing:
     threads: 1
     run:
         with open(str(output.csv), "w") as outF:
-            header = ["accession","name"]
+            header = ["accession","name", "ftp_path"]
             outF.write(','.join(header) + '\n')
             with open(str(input.missing)) as csvfile:
                 with open(str(input.lineages)) as lineages:
@@ -155,7 +145,7 @@ rule build_downloadfile_from_missing:
                     for row in missing_reader:
                         acc = row['ident']
                         name = lineages_dict[acc]
-                        outF.write(f"{acc},{name}\n")
+                        outF.write(f"{acc},{name},\n")
 
 
 rule download_and_sketch_missing:
@@ -200,7 +190,7 @@ rule download_genomes_for_failed_protein_downloads:
         """
         sourmash scripts gbsketch {input.failed_proteomes} -o {params.zip} --failed {output.failed} \
                 --param-str "protein,k=7,k=10,scaled=200" --genomes-only --download-only --keep-fastas \
-                --fastas {params.fasta_dir} -r 1 -c {threads} 2> {log}
+                --fastas {params.fasta_dir} -r 5 -c {threads} 2> {log}
         # zip not actually built here
         rm -rf {params.zip}
         """
@@ -299,23 +289,45 @@ rule cat_full_zip:
                      -k {wildcards.k} -o {output} 2> {log}
         """
 
-# rule extract_representatives_zip:
-#     input:
-#         abund_zip = "gtdb-{tag}-k{k}.abund.zip",
-#         reps_picklist = REPS_TAXONOMY_FILE ,
-#     output:
-#         "gtdb-{tag}-reps.k{k}.abund.zip"
-#     log: f"{LOGS}/gtdb-{{tag}}-k{{k}}.extract_reps_zip.log"
-#     benchmark: f"{LOGS}/gtdb-{{tag}}-k{{k}}.extract_reps_zip.benchmark"
-#     threads: 1
-#     resources:
-#         mem_mb= lambda wildcards, attempt: attempt * 3000,
-#         time= 6000,
-#         partition='high2',
-#     shell:
-#         """
-#         sourmash sig extract {input.abund_zip} --picklist {input.reps_picklist}:ident:ident -k {wildcards.k} -o {output} 2> {log}
-#         """
+
+rule picklist_confirm:
+    input:
+        db = "{name}-{tag}-k{k}.protein.abund.zip",
+        picklist = LINEAGES,
+    output:
+        missing = "{name}-{tag}-k{k}.protein.still-missing.csv",
+    log: f"{LOGS}/{{name}}-{{tag}}-k{{k}}.protein.picklist_confirm.log"
+    benchmark: f"{LOGS}/{{name}}-{{tag}}-k{{k}}.protein.picklist_confirm.benchmark"
+    threads: 1
+    resources:
+        mem_mb= lambda wildcards, attempt: attempt * 6000,
+        time= 240,
+        partition='high2',
+    shell:
+        """
+        sourmash sig check --picklist {input.picklist}:ident:ident \
+            {input.db} --output-missing {output.missing} 2> {log}
+        touch {output.missing}
+        """
+
+rule extract_representatives_zip:
+    input:
+        abund_zip = "gtdb-{tag}-k{k}.abund.zip",
+        reps_picklist = REPS_LINEAGES,
+    output:
+        "gtdb-{tag}-reps.k{k}.abund.zip"
+    log: f"{LOGS}/gtdb-{{tag}}-k{{k}}.extract_reps_zip.log"
+    benchmark: f"{LOGS}/gtdb-{{tag}}-k{{k}}.extract_reps_zip.benchmark"
+    threads: 1
+    resources:
+        mem_mb= lambda wildcards, attempt: attempt * 3000,
+        time= 6000,
+        partition='high2',
+    shell:
+        """
+        sourmash sig flatten {input.abund_zip} --picklist {input.reps_picklist}:ident:ident -k {wildcards.k} -o {output} 2> {log}
+        """
+        # sourmash sig extract {input.abund_zip} --picklist {input.reps_picklist}:ident:ident -k {wildcards.k} -o {output} 2> {log}
 
 # rule picklist_confirm:
 #     input:
