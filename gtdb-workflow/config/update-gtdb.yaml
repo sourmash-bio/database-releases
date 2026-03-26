@@ -1,0 +1,88 @@
+# Set email for success and error
+# reports. Leave blank for no
+# emails.
+
+email: 'ccbaumler@ucdavis.edu'
+
+# Leave date blank for current date
+# This is best practice because the
+# files containing genbank info are
+# downloaded at the time of each run.
+# Note, if float surround in quotes.
+# E.g. "2022.03"
+
+# example =
+date: "08062025"
+
+update_to_release:
+  - 226
+
+update_from_release:
+  - 220
+
+# Default release version is 0
+# GTDB infrequently releases a
+# sub-release version.
+
+# https://data.gtdb.ecogenomic.org/releases/release214/
+
+release_version:
+
+# This is the output path to place 
+# all the final output directories
+# and files
+# Note that genbank-{date} will be
+# included at the end of this path
+# Default is '../genbank-{date}'
+#
+# By writing `output_directory: 'test'`
+# the workflow will run a subset of
+# assembly files per the domains
+
+# examples = output_directory: 'elsewhere'
+
+output_directory: '/group/ctbrowngrp/sourmash-db'
+
+# The sourmash kmer size you
+# would like to sketch as your
+# databases
+
+# example =
+#k_values:
+#  - 21
+#  - 31
+
+k_values:
+  - 21
+  - 31
+  - 51
+
+# The value to scale the sourmash
+# database by. Lab standard is 1000
+# but set to lowest needed and 
+# downsample.
+
+# example =
+#scale_value: 1000
+
+scale_value: 1000
+
+# The batch size for downloading genomes
+# from NCBI. This allows the download to
+# be resumed, if interrupted. 
+
+# `1000` seems to be a good standard. 
+
+batch_size: 1000
+
+# The lineage ranks for the pangenome
+# databases for sourmash to generate.
+# This pangenome database will be
+# created from the cleaned and updated
+# version of the existing database.
+
+# Species, genus, and family 
+
+lineage_rank:
+  - 'species'
+  - 'genus'

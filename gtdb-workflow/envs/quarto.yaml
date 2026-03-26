@@ -1,0 +1,31 @@
+name: quarto-trial
+channels:
+  - conda-forge
+  - bioconda
+  - defaults
+dependencies:
+  - python=3.10  # specify the Python version you prefer
+  - quarto
+  - pandoc
+  - r-base  # for R support
+  - r-essentials  # includes many useful R packages
+  - jupyterlab  # for using Jupyter notebooks
+  - ipykernel  # for Jupyter kernel support
+  - nodejs  # for JavaScript support in Quarto
+
+  # Add any other dependencies you might need
+  - r-reticulate
+  - sourmash
+  - numpy
+  - pandas
+  - matplotlib
+  - scipy
+  - scikit-learn
+
+  # Add R packages (these will be installed via Conda)
+  - r-tidyverse
+  - r-shiny
+  - r-rmarkdown
+
+  # Add TeXLive for PDF output
+  - texlive-core

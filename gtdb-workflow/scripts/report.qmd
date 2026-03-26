@@ -1,0 +1,344 @@
+---
+title: "`r params$report_title`"
+date: last-modified
+date-format: "dddd, [the] D[<sup style='font-size:65%;font-style:italic;'>th</sup>] [of] MMMM, YYYY"
+format:
+  html:
+    embed-resources: true
+    toc: true
+execute:
+  echo: false
+  warning: false
+params:
+  report_title: Database report
+  old_details: default_old_date
+  new_details: default_new_date
+  existing_report: default_exist_details
+  missing_report: default_miss_details
+  old_db: default_old_db,dft_o
+  new_db: default_new_db,dft_n
+  new_reps_db: default_reps_db, dft_r
+  old_mf: default_old_mf
+  new_mf: default_new_mf
+  new_reps_mf: default_reps_mf
+  existing_failures: default_exist_failures
+  missing_failures: default_miss_failures
+  config: default_config_dict
+  good_assm: default_assembly
+  bad_assm: default_historical
+  missed: default_missing_sigs
+  gathered: default_gathered_sigs
+  reps_missed: default_reps_missing_sigs
+  reps_gathered: default_reps_gathered_sigs
+  lineage: default_lineage
+  reps_lineage: default_reps_lineage
+  recovered: default_recovered_genomes
+  manual_download: default_man_download
+  manual_check: default_man_check
+  manual_output: default_man_output
+  manual_failed: default_man_fail
+  manual_log: default_man_log
+  manual_reps_download: default_reps_download
+  manual_reps_check: default_reps_check
+  manual_reps_output: default_reps_output
+  manual_reps_failed: default_reps_fail
+  manual_reps_log: default_reps_log
+  output_dir: output/dir/path
+  ar: default_Ar_metadata
+  bac: default_bac_metadata
+  k_list: default_k_list
+  scale: default_scale
+---
+
+```{r setup}
+library(stringr)
+
+library(reticulate)
+use_condaenv( condaenv = Sys.getenv("CONDA_PREFIX"), required = TRUE)
+
+options(scipen = 999) # prevent sci notation
+```
+
+## Databases updated from `r params$old_details` to `r params$new_details`
+
+The list of database files:
+
+```{r}
+new_db_lst <- str_split(params$new_db, ",")
+old_db_lst <- str_split(params$old_db, ",")
+new_reps_db_lst <- str_split(params$new_reps_db, ",")
+
+for (i in seq_along(new_db_lst[[1]])) {
+    new_name <- new_db_lst[[1]][i]
+    old_name <- old_db_lst[[1]][i]
+    reps_name <- new_reps_db_lst[[1]][i]
+
+    lst <- paste("  - Updated", old_name, "to create", basename(new_name), "and", basename(reps_name) )
+    cat(lst, "\n\n")
+}
+```
+
+## Summary of databases
+
+```{python}
+config_dict = r.params.get('config')
+
+k_val_list = config_dict.get('k_values')
+```
+
+Looking only at the first k-value defined in `r reticulate::py_eval("k_val_list")`.
+
+### Summary example for the old databases
+
+**The manifest for `r old_db_lst[[1]][1]`:**
+
+```{python}
+import argparse
+import re
+import sourmash
+
+args = argparse.Namespace()
+args.quiet = False
+args.debug = False
+args.json_out = False
+args.force = False
+args.rebuild_manifest = False
+args.path = r.params.get('old_mf')
+
+sourmash.sig.fileinfo(args=args)
+```
+
+### Summary example for the new databases
+
+**The manifest for `r new_db_lst[[1]][1]`:**
+
+```{python}
+args.path = r.params.get('new_mf')
+
+sourmash.sig.fileinfo(args=args)
+
+```
+
+### Summary example for the new representative databases
+
+**The manifest for `r new_reps_db_lst[[1]][1]`:**
+
+```{python}
+args.path = r.params.get('new_reps_mf')
+
+sourmash.sig.fileinfo(args=args)
+
+```
+
+
+### Replicate these results:
+
+```{bash}
+#| echo: true
+#| eval: false
+
+sourmash sig summarize database.zip
+```
+
+## Genome report for the updated database 
+
+Databases were updated with the `update_sourmash_databases.py` script in the `scripts` directory. 
+This compared the existing database (`r params$old_details`) against the `r basename(params$good_assm)` and `r basename(params$bad_assm)` files.
+
+**The summary report is below.**
+
+For the signatures carried over from the previous database release:
+
+```{r}
+writeLines(readLines(params$existing_report, n=5))
+```
+
+For the signatures missing from the previous database release:
+
+```{r}
+writeLines(readLines(params$missing_report, n=5))
+```
+
+::: {.callout-note collapse="true"}
+## Expand for `r basename(params$existing_report)` details
+```{r}
+writeLines(readLines(params$existing_report))
+```
+:::
+
+::: {.callout-note collapse="true"}
+## Expand for `r basename(params$missing_report)` details
+```{r}
+writeLines(readLines(params$missing_report))
+```
+:::
+
+---
+
+```{r}
+missed = readLines(params$missed)
+reps_missed = readLines(params$reps_missed)
+lineage = readLines(params$lineage)
+reps_lineage = readLines(params$reps_lineage)
+```
+
+When checking the final database, there are `r length(missed) - 1` missed signatures of the expected `r length(lineage) - 1`.
+
+::: {.callout-note collapse="true"}
+## Expand for full database details
+```{r}
+writeLines(missed)
+```
+:::
+
+When checking the representative database, there are `r length(reps_missed) - 1` missed signatures of the expected `r length(reps_lineage) - 1`.
+
+::: {.callout-note collapse="true"}
+## Expand for representative database details
+```{r}
+writeLines(reps_missed)
+```
+:::
+
+## Genomes failed to download or sketch
+
+```{r}
+miss_fail_lines <- readLines(params$missing_failures)
+miss_fail_count <- length(miss_fail_lines) - 1 
+exist_fail_lines <- readLines(params$existing_failures)
+exist_fail_count <- length(exist_fail_lines) - 1 
+```
+
+The sourmash plugin [DirectSketch](https://github.com/sourmash-bio/sourmash_plugin_directsketch){target="_blank"} was used to download and sketch the missing or updated genomes. 
+
+This plugin failed to download and:
+
+  - update `{r} exist_fail_count` existing sequences.
+  - sketch `{r} miss_fail_count` new sequences.
+
+::: {.callout-note collapse="true"}
+## Expand for details on failed-to-update old sequences
+```{r}
+writeLines(readLines(params$existing_failures))
+```
+:::
+
+::: {.callout-note collapse="true"}
+## Expand for details on failed-to-sketch new sequences
+```{r}
+writeLines(readLines(params$missing_failures))
+```
+:::
+
+
+---
+
+Within the `workflow-cleanup` directory, there are files for manually downloading any missing genomes and manually checking the remaining genomes.
+
+::: {.callout-note collapse="true"}
+## Expand for commands
+Consider running:
+```markdown
+```{r}
+#| echo: false
+#| eval: true
+#| results: 'asis'
+
+# Using glue to create code strings
+cd_str <- glue::glue("cd {params$output_dir}")
+sketch_str <- glue::glue('sourmash scripts gbsketch workflow-cleanup/{basename(params$manual_download)} -o workflow-cleanup{basename(params$manual_output)} --failed workflow-cleanup/{basename(params$manual_failed)} --param-str "dna,{params$k_list},scaled={params$scale},abund" -r 5 -g 2> workflow-cleanup/{basename(params$manual_log)}')
+reps_sketch_str <- glue::glue('sourmash scripts gbsketch workflow-cleanup/{basename(params$manual_reps_download)} -o workflow-cleanup{basename(params$manual_reps_output)} --failed workflow-cleanup/{basename(params$manual_reps_failed)} --param-str "dna,{params$k_list},scaled={params$scale},abund" -r 5 -g 2> workflow-cleanup/{basename(params$manual_reps_log)}')
+mv_str <- glue::glue("mv {basename(new_db_lst[[1]][1])} {basename(new_db_lst[[1]][2])} {basename(new_db_lst[[1]][3])} {basename(new_reps_db_lst[[1]][1])} {basename(new_reps_db_lst[[1]][2])} {basename(new_reps_db_lst[[1]][3])} workflow-cleanup/ && cd workflow-cleanup/")
+
+rep1_str <- glue::glue("sourmash sig cat {basename(params$manual_reps_output)} {basename(new_reps_db_lst[[1]][1])} -k {reticulate::py$config_dict$k_values[1]} -o ../{basename(new_reps_db_lst[[1]][1])}")
+rep2_str <- glue::glue("sourmash sig cat {basename(params$manual_reps_output)} {basename(new_reps_db_lst[[1]][2])} -k {reticulate::py$config_dict$k_values[2]} -o ../{basename(new_reps_db_lst[[1]][2])}")
+rep3_str <- glue::glue("sourmash sig cat {basename(params$manual_reps_output)} {basename(new_reps_db_lst[[1]][3])} -k {reticulate::py$config_dict$k_values[3]} -o ../{basename(new_reps_db_lst[[1]][3])}")
+cat1_str <- glue::glue("sourmash sig cat {basename(params$manual_output)} {basename(new_db_lst[[1]][1])} -k {reticulate::py$config_dict$k_values[1]} -o ../{basename(new_db_lst[[1]][1])}")
+cat2_str <- glue::glue("sourmash sig cat {basename(params$manual_output)} {basename(new_db_lst[[1]][2])} -k {reticulate::py$config_dict$k_values[2]} -o ../{basename(new_db_lst[[1]][2])}")
+cat3_str <- glue::glue("sourmash sig cat {basename(params$manual_output)} {basename(new_db_lst[[1]][3])} -k {reticulate::py$config_dict$k_values[3]} -o ../{basename(new_db_lst[[1]][3])}")
+
+# And print the strings into a markdown code block
+cat(cd_str)
+cat("\n")
+cat("\n")
+cat(sketch_str)
+cat("\n")
+cat("\n")
+cat(mv_str)
+cat("\n")
+cat("\n")
+cat(rep1_str)
+cat("\n")
+cat(rep2_str)
+cat("\n")
+cat(rep3_str)
+cat("\n")
+cat("\n")
+cat(cat1_str)
+cat("\n")
+cat(cat2_str)
+cat("\n")
+cat(cat3_str)
+cat("\n")
+```
+```
+:::
+
+Details below:
+
+```{r}
+writeLines(readLines(params$recovered))
+```
+
+::: {.callout-note collapse="true"}
+## Expand for `r basename(params$manual_download)` details:
+```{r}
+writeLines(readLines(params$manual_download))
+```
+:::
+
+::: {.callout-note collapse="true"}
+## Expand for `r basename(params$manual_check)` details:
+```{r}
+writeLines(readLines(params$manual_check))
+```
+:::
+
+::: {.callout-note collapse="true"}
+## Expand for `r basename(params$manual_reps_download)` details:
+```{r}
+writeLines(readLines(params$manual_reps_download))
+```
+:::
+
+::: {.callout-note collapse="true"}
+## Expand for `r basename(params$manual_reps_check)` details:
+```{r}
+writeLines(readLines(params$manual_reps_check))
+```
+:::
+
+## Taxonomic lineage files created
+
+`r basename(params$lineage)` lineage file created
+
+The file length of `r length(lineage) - 1` was created from the `r basename(params$ar)` and `r basename(params$bac)` file.
+
+::: {.callout-note collapse="true"}
+## Expand for details on `r basename(params$lineage)`
+```{r}
+writeLines(lineage)
+```
+:::
+
+`r basename(params$reps_lineage)` lineage file created
+
+The file length of `r length(reps_lineage) - 1` was created from the `r basename(params$ar)` and `r basename(params$bac)` file.
+
+::: {.callout-note collapse="true"}
+## Expand for details on `r basename(params$reps_lineage)`
+```{r}
+writeLines(reps_lineage)
+```
+:::
+

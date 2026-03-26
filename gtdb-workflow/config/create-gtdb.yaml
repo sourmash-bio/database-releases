@@ -1,0 +1,58 @@
+# Set email for success and error
+# reports. Leave blank for no
+# emails.
+
+email: 'ccbaumler@ucdavis.edu'
+
+# Leave date blank for current date
+# This is best practice because the
+# files containing genbank info are
+# downloaded at the time of each run.
+
+# example =
+#date:
+#  - 20220315
+#  - 202405030
+
+release:
+
+release_version:
+
+# This is the output path to place 
+# all the final output directories
+# and files
+# Note that genbank-{date} will be
+# included at the end of this path
+# Default is '../genbank-{date}'
+#
+# By writing `output_directory: 'test'`
+# the workflow will run a subset of
+# assembly files per the domains
+
+# examples = output_directory: 'elsewhere'
+
+output_directory: 
+
+# The sourmash kmer size you
+# would like to sketch as your
+# databases
+
+# example =
+#k_values:
+#  - 21
+#  - 31
+
+k_values:
+  - 21
+  - 31
+  - 51
+
+# The value to scale the sourmash
+# database by. Lab standard is 1000
+# but set to lowest needed and 
+# downsample
+
+# example =
+#scale_value: 1000
+
+scale_value: 1000

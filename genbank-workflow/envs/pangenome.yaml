@@ -1,0 +1,9 @@
+name: pangenome
+channels:
+- conda-forge
+- bioconda
+- defaults
+dependencies:
+- pip
+- pip:
+  - sourmash_plugin_pangenomics>=0.3.1

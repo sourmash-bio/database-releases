@@ -1,0 +1,249 @@
+---
+title: "`r params$report_title`"
+date: last-modified
+date-format: "dddd, [the] D[<sup style='font-size:65%;font-style:italic;'>th</sup>] [of] MMMM, YYYY"
+format:
+  html:
+    embed-resources: true
+    toc: true
+execute:
+  echo: false
+  warning: false
+params:
+  report_title: Database report
+  new_details: default_new_date
+  new_db: default_new_db,dft_n
+  new_mf: default_new_mf
+  config: default_config_dict
+  missing: default_missing_sigs
+  existing: default_existing_sigs
+  data_links: default_data_links
+  meta_links: default_meta_links
+  names: default_names
+  idents: default_idents
+  missing_files: default_missing_files
+  output_dir: output/dir/path
+  k_list: default_k_list
+---
+
+<script>
+  function copyCalloutContent(button) {
+    const calloutContent = button.closest('.callout').querySelector('.callout-content');
+    const tempTextArea = document.createElement('textarea');
+    tempTextArea.value = calloutContent.innerText;
+    document.body.appendChild(tempTextArea);
+    tempTextArea.select();
+    document.execCommand('copy');
+    document.body.removeChild(tempTextArea);
+    button.textContent = "Copied!";
+    setTimeout(() => button.textContent = "Copy", 2000);
+  }
+</script>
+
+<style>
+.callout-note {
+  position: relative;
+  padding-right: 40px;
+}
+
+.copy-btn {
+  position: absolute;
+  top: 50px;
+  right: 10px;
+  cursor: pointer;
+  padding: 5px 10px;
+  font-size: 0.9em;
+}
+</style>
+
+```{r setup}
+library(stringr)
+
+library(reticulate)
+use_condaenv( condaenv = Sys.getenv("CONDA_PREFIX"), required = TRUE)
+
+options(scipen = 999) # prevent sci notation
+```
+
+## Databases created for release `r params$new_details`
+
+The list of database files:
+
+```{r}
+new_db_lst <- str_split(params$new_db, ",")
+
+for (i in seq_along(new_db_lst[[1]])) {
+    new_name <- new_db_lst[[1]][i]
+
+    lst <- paste("  - Created", basename(new_name))
+    cat(lst, "\n\n")
+}
+```
+
+## Summary of database
+
+```{python}
+config_dict = r.params.get('config')
+
+k_val_list = config_dict.get('k_values')
+```
+
+Looking only at the first k-value defined in `r reticulate::py_eval("k_val_list")`.
+
+### Summary example for the new databases
+
+**The manifest for `r new_db_lst[[1]][1]`:**
+
+```{python}
+import argparse
+import re
+import sourmash
+
+args = argparse.Namespace()
+args.quiet = False
+args.debug = False
+args.json_out = False
+args.force = False
+args.rebuild_manifest = False
+args.path = r.params.get('new_mf')
+
+sourmash.sig.fileinfo(args=args)
+```
+
+### Replicate these results:
+
+```{bash}
+#| echo: true
+#| eval: false
+
+sourmash sig summarize database.zip
+```
+
+## Workflow details for databases release `r params$new_details`
+
+```{r}
+existing = readLines(params$existing)
+missing = readLines(params$missing)
+idents = readLines(params$idents)
+```
+
+For the `r length(existing) - 2` sequences in the create databases, there are `r length(missing) - 2` missing signatures from the expected `r length(idents) - 1`.
+
+::: {.callout-note collapse="true"}
+## Expand for details
+<div class="callout-content">
+```{r}
+writeLines(missing)
+```
+</div>
+<button class="copy-btn" onclick="copyCalloutContent(this)">Copy</button>
+:::
+
+## Failures: Sequences failed to download or sketch
+
+```{r}
+library(dplyr)
+
+missing_df = read.csv(params$missing_files)
+missing_count <- missing_df %>% dplyr::filter(in_checkfile == 'true') %>% nrow() 
+```
+
+The script `find_missing_files.sh` was used to identify the missing sequences amoung the `tar.xz` archives. This script found `{r} missing_count` missing sequences.
+
+::: {.callout-note collapse="true"}
+## Expand for details
+```{python Python Functions}
+from collections import defaultdict
+
+def row_generator(filename):
+    with open(filename, 'rt') as fp:
+        print("Reading csv file content...")
+        for i, line in enumerate(fp, start=1):
+            line = line.strip().split(',')
+
+            # Skip header, create index for in_checkfile column, return only lines with true in index
+            if i == 1:
+                header = line
+                in_checkfile_index = header.index('in_checkfile')
+                continue
+
+            if line[in_checkfile_index].lower() == 'true':
+                yield line
+
+        print(f"Processed {i} lines from csv file")
+
+def line_processor(missed_list):
+    total = len(missed_list)
+    missed_dict = defaultdict(list)
+
+    for i, line in enumerate(missed_list):
+        tar_file = line[0]
+        seq_file = line[1]
+        missed_dict[tar_file].append(seq_file)
+
+    print(f'Found {total} missing files')
+    return missed_dict
+```
+
+```{python Missed Details}
+missed_list = list(row_generator(r.params.get('missing_files')))
+missed_dict = line_processor(missed_list)
+
+total_keys = len(missed_dict)
+total_values = sum(len(v) for v in missed_dict.values())
+
+for i, (k, v) in enumerate(missed_dict.items()):
+    print(f"Key {i+1}/{total_keys}: {k}")
+    if isinstance(v, list) or isinstance(v, tuple):
+        for j, item in enumerate(v):
+            print(f"    Value {j+1}/{total_values}: {item}")
+    else:
+        print(f"    Value: {v}")
+```
+:::
+
+---
+
+Within the `workflow-cleanup` directory, there is a the `r basename(params$missing_files)` file that may be used to manually check the archives for the missing sequences.
+
+::: {.callout-note collapse="true"}
+## Expand for commands
+Consider running:
+```markdown
+```{r}
+#| echo: false
+#| eval: true
+#| results: 'asis'
+
+# Using glue to create code strings
+cd_str <- glue::glue("cd {params$output_dir}")
+
+script_str <- glue::glue("~/database-releases/allthebacteria-workflow/scripts/extract_missing_files.py workflow-cleanup/{basename(params$missing_files)} -d allthebacteria-r{params$new_details}-data/ -o missed-files")
+
+sketch_str <- glue::glue('sourmash scripts manysketch missed-files/*/manysketch.csv -p {params$k_list},scaled={reticulate::py$config_dict$scale_value},abund -o allthebacteria-r{params$new_details}-sigs/missed-files.zip')
+
+cat1_str <- glue::glue("sourmash sig cat allthebacteria-r{params$new_details}-sigs/missed-files.zip allthebacteria-r{params$new_details}-sigs/{basename(new_db_lst[[1]][1])} -k {reticulate::py$config_dict$k_values[1]} -o {basename(new_db_lst[[1]][1])}")
+cat2_str <- glue::glue("sourmash sig cat allthebacteria-r{params$new_details}-sigs/missed-files.zip allthebacteria-r{params$new_details}-sigs/{basename(new_db_lst[[1]][2])} -k {reticulate::py$config_dict$k_values[2]} -o {basename(new_db_lst[[1]][2])}")
+cat3_str <- glue::glue("sourmash sig cat allthebacteria-r{params$new_details}-sigs/missed-files.zip allthebacteria-r{params$new_details}-sigs/{basename(new_db_lst[[1]][3])} -k {reticulate::py$config_dict$k_values[3]} -o {basename(new_db_lst[[1]][3])}")
+
+# And print the strings into a markdown code block
+cat(cd_str)
+cat("\n")
+cat("\n")
+cat(script_str)
+cat("\n")
+cat("\n")
+cat(sketch_str)
+cat("\n")
+cat("\n")
+cat(cat1_str)
+cat("\n")
+cat(cat2_str)
+cat("\n")
+cat(cat3_str)
+cat("\n")
+```
+```
+:::
+
+

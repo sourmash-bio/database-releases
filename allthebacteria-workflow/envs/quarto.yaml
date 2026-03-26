@@ -1,0 +1,31 @@
+name: quarto-smk
+channels:
+  - conda-forge
+  - bioconda
+  - defaults
+dependencies:
+  - quarto
+  - pandoc
+  - python=3.10 # for python support
+  - nodejs  # for JavaScript support
+  - r-base  # for R support
+  - r-essentials  # useful R packages
+  - jupyterlab  # for using Jupyter notebooks
+  - ipykernel  # for Jupyter kernel support
+
+  # Add any other dependencies you might need
+  - sourmash
+  - numpy
+  - pandas
+  - matplotlib
+  - scipy
+  - scikit-learn
+
+  # R packages installed via Conda
+  - r-reticulate # for python options in R code
+  - r-tidyverse
+  - r-shiny
+  - r-rmarkdown
+
+  # Add TeXLive for PDF output
+  - texlive-core

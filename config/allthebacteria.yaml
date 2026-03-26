@@ -1,0 +1,67 @@
+# Set email for success and error
+# reports. Leave blank for no
+# emails.
+
+email: 'ccbaumler@ucdavis.edu'
+
+## The databses releases you would like
+# to turn into a sourmash database
+
+# example
+# releases:
+#   -0.2
+
+releases:
+  - 0.2
+
+# The location of the ftp_link_list.py
+# script output. The directory containing
+# all the files of assembly filenames
+# Note: These files must contain "r{release-number}"
+
+# example
+# files_of_filenames:
+#   - 'allthebacteria-r0.2-assembly-filenames.txt'
+
+files_of_paths:
+  - 'allthebacteria-r0.2-assembly-paths.txt'
+
+# This is the output path to place 
+# all the final output directories
+# and files
+# Note that the directory 
+# allthebacteria-r{releases} will be
+# included at the end of this path
+# Default is '../allthebacteria-r{releases}'
+#
+# By writing `output_directory: 'test'`
+# the workflow will run a single
+# assembly archive per release
+
+# examples = output_directory: 'elsewhere'
+
+output_directory: '/group/ctbrowngrp4/2024-ccbaumler-allthebacteria'
+
+# The sourmash kmer size you
+# would like to sketch as your
+# databases
+
+# example =
+#k_values:
+#  - 21
+#  - 31
+
+k_values:
+  - 21
+  - 31
+  - 51
+
+# The value to scale the sourmash
+# database by. Lab standard is 1000
+# but set to lowest needed and 
+# downsample.
+
+# example =
+#scale_value: 1000
+
+scale_value: 1000

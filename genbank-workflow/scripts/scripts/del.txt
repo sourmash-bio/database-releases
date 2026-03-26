@@ -1,0 +1,12 @@
+GCA_019802515.2	https://ftp.ncbi.nlm.nih.gov/genomes/all/GCA/019/802/515/GCA_019802515.2_PfKE07	Plasmodium falciparum	strain=KE07	PfKE07
+GCA_019802425.2	https://ftp.ncbi.nlm.nih.gov/genomes/all/GCA/019/802/425/GCA_019802425.2_PfCO01_corrected_assembly	Plasmodium falciparum	strain=CO01	PfCO01_corrected_assembly
+GCA_019802415.2	https://ftp.ncbi.nlm.nih.gov/genomes/all/GCA/019/802/415/GCA_019802415.2_Pf2004	Plasmodium falciparum	strain=2004	Pf2004
+GCA_019802405.2	https://ftp.ncbi.nlm.nih.gov/genomes/all/GCA/019/802/405/GCA_019802405.2_PfCO01_seq	Plasmodium falciparum	strain=CO01	PfCO01_seq
+GCA_003072545.4	https://ftp.ncbi.nlm.nih.gov/genomes/all/GCA/003/072/545/GCA_003072545.4_EMAI_ToriFCr_1	Theileria orientalis	strain=Fish Creek	EMAI_ToriFCr_1
+GCA_003072535.4	https://ftp.ncbi.nlm.nih.gov/genomes/all/GCA/003/072/535/GCA_003072535.4_EMAI_ToriGNu_1	Theileria orientalis	strain=Goon Nure	EMAI_ToriGNu_1
+GCA_001029375.2	https://ftp.ncbi.nlm.nih.gov/genomes/all/GCA/001/029/375/GCA_001029375.2_Pythium_PINS_2.0	Pythium insidiosum	strain=Pi-S	Pythium_PINS_2.0
+GCA_001638955.2	https://ftp.ncbi.nlm.nih.gov/genomes/all/GCA/001/638/955/GCA_001638955.2_Euglena_mito_Newbler	Euglena gracilis var. bacillaris	strain=SAG 1224-5/15	Euglena_mito_Newbler
+GCA_000002825.3	https://ftp.ncbi.nlm.nih.gov/genomes/all/GCA/000/002/825/GCA_000002825.3_ASM282v3	Trichomonas vaginalis G3	strain=G3	ASM282v3
+GCA_900537975.2	https://ftp.ncbi.nlm.nih.gov/genomes/all/GCA/900/537/975/GCA_900537975.2_LBRM_annotationDEFINITIVO	Leishmania braziliensis MHOM/BR/75/M2904	na	LBRM_annotationDEFINITIVO
+GCA_022023675.2	https://ftp.ncbi.nlm.nih.gov/genomes/all/GCA/022/023/675/GCA_022023675.2_ASM2202367v2	Phytopythium vexans	na	ASM2202367v2
+GCA_000318465.3	https://ftp.ncbi.nlm.nih.gov/genomes/all/GCA/000/318/465/GCA_000318465.3_MPF4_v2.1	Phytophthora lateralis MPF4	strain=MPF4	MPF4_v2.1

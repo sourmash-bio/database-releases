@@ -1,0 +1,7 @@
+name: branchwater-smk
+channels:
+- conda-forge
+- bioconda
+- defaults
+dependencies:
+- sourmash_plugin_branchwater==0.9.3

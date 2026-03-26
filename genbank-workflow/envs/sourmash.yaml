@@ -1,0 +1,8 @@
+name: genbank-sourmash-database
+channels:
+  - conda-forge
+  - bioconda
+  - defaults
+dependencies:
+  - pandas>2,<3
+  - sourmash>4.8,<5
